@@ -11,6 +11,7 @@ func TestGrep(t *testing.T) {
 		{"a", "b", false},
 		{"true", "false", false},
 
+		{"&x", "1", true},
 		{"&x", "abc", true},
 		{"&x", "[1,2,3]", true},
 		{"&x", "{a = b}", true},
@@ -38,12 +39,12 @@ func TestGrep(t *testing.T) {
 		{"{for &k, &v in map: &k => upper(&v)}", "{for k, v in map: k => upper(v)}", true},
 
 		{"foo[&x]", "foo[a]", true},
+		{"foo[&x]", "foo[1]", false}, // This is due to the key of the traverser index is a cty.Value, which is not either a string or an ast node.
+		{"&a[count.index]", "var.subnet_ids[count.index]", true},
 
 		{"&x()", "sort()", true},
 		{"&x(&y)", "sort([1,2,3])", true},
 		{"&x([])", "sort([1,2,3])", false},
-
-		{"&a[count.index]", "var.subnet_ids[count.index]", true},
 	}
 	for _, tc := range tests {
 		match, err := grep(tc.expr, tc.src)
