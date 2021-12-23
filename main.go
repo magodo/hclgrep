@@ -71,11 +71,12 @@ type matcher struct {
 	values map[string]nodeOrString
 }
 
-func (m *matcher) node(expr, node hclsyntax.Node) bool {
-	if expr == nil || node == nil {
-		return expr == node
+func (m *matcher) node(pattern, node hclsyntax.Node) bool {
+	if pattern == nil || node == nil {
+		return pattern == node
 	}
-	switch x := expr.(type) {
+	switch x := pattern.(type) {
+	// Expressions
 	case *hclsyntax.LiteralValueExpr:
 		y, ok := node.(*hclsyntax.LiteralValueExpr)
 		return ok && x.Val.Equals(y.Val).True()
@@ -150,9 +151,92 @@ func (m *matcher) node(expr, node hclsyntax.Node) bool {
 		_, ok := node.(*hclsyntax.AnonSymbolExpr)
 		// Only do type check
 		return ok
+	// Body
+	case *hclsyntax.Body:
+		y, ok := node.(*hclsyntax.Body)
+		return ok && m.body(x, y)
+	// Attribute(s)
+	case hclsyntax.Attributes:
+		y, ok := node.(hclsyntax.Attributes)
+		return ok && m.attributes(x, y)
+	case *hclsyntax.Attribute:
+		y, ok := node.(*hclsyntax.Attribute)
+		return ok && m.attribute(x, y)
+	// Block(s)
+	case hclsyntax.Blocks:
+		y, ok := node.(hclsyntax.Blocks)
+		return ok && m.blocks(x, y)
+	case *hclsyntax.Block:
+		y, ok := node.(*hclsyntax.Block)
+		return ok && m.block(x, y)
 	default:
+		// Including: hclsyntax.ChildScope
 		panic(fmt.Sprintf("unexpected node: %T", x))
 	}
+}
+
+func (m *matcher) attributes(x, y hclsyntax.Attributes) bool {
+	if len(x) != len(y) {
+		return false
+	}
+	for k, elemx := range x {
+		elemy := y[k]
+		if !m.attribute(elemx, elemy) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *matcher) attribute(x, y *hclsyntax.Attribute) bool {
+	if x == nil || y == nil {
+		return x == y
+	}
+	return m.node(x.Expr, y.Expr) &&
+		m.potentialWildcardIdentEqual(x.Name, y.Name)
+}
+
+func (m *matcher) blocks(x, y hclsyntax.Blocks) bool {
+	if len(x) != len(y) {
+		return false
+	}
+	for k, elemx := range x {
+		elemy := y[k]
+		if !m.block(elemx, elemy) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *matcher) block(x, y *hclsyntax.Block) bool {
+	if x == nil || y == nil {
+		return x == y
+	}
+	return m.potentialWildcardIdentEqual(x.Type, y.Type) &&
+		m.potentialWildcardIdentsEqual(x.Labels, y.Labels) &&
+		m.body(x.Body, y.Body)
+}
+
+func (m *matcher) body(x, y *hclsyntax.Body) bool {
+	if x == nil || y == nil {
+		return x == y
+	}
+
+	return m.attributes(x.Attributes, y.Attributes) && m.blocks(x.Blocks, y.Blocks)
+}
+
+func (m *matcher) potentialWildcardIdentsEqual(identX, identY []string) bool {
+	if len(identX) != len(identY) {
+		return false
+	}
+	for i, elemX := range identX {
+		elemY := identY[i]
+		if m.potentialWildcardIdentEqual(elemX, elemY) {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *matcher) potentialWildcardIdentEqual(identX, identY string) bool {
