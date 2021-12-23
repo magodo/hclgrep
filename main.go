@@ -40,7 +40,7 @@ func grep(expr string, src string) (bool, error) {
 			s = string(t.Bytes)
 		default:
 			// TODO: whether this is needed?
-			buf.WriteRune(rune(hclsyntax.TokenType(t.Type)))
+			buf.WriteRune(rune(t.Type))
 		}
 		buf.WriteString(s)
 		buf.WriteByte(' ') // for e.g. consecutive idents (e.g. ForExpr)
@@ -53,12 +53,25 @@ func grep(expr string, src string) (bool, error) {
 	if diags.HasErrors() {
 		return false, errors.New(diags.Error())
 	}
-	m := matcher{values: map[string]hclsyntax.Node{}}
+	m := matcher{values: map[string]nodeOrString{}}
 	return m.node(astExpr, astSrc), nil
 }
 
+type nodeOrString struct {
+	String *string
+	Node   hclsyntax.Node
+}
+
+func newNodeOrStringForString(s string) nodeOrString {
+	return nodeOrString{String: &s}
+}
+
+func newNodeOrStringForNode(node hclsyntax.Node) nodeOrString {
+	return nodeOrString{Node: node}
+}
+
 type matcher struct {
-	values map[string]hclsyntax.Node
+	values map[string]nodeOrString
 }
 
 func (m *matcher) node(expr, node hclsyntax.Node) bool {
@@ -80,11 +93,15 @@ func (m *matcher) node(expr, node hclsyntax.Node) bool {
 		return ok && m.exprs(x.Parts, y.Parts)
 	case *hclsyntax.FunctionCallExpr:
 		y, ok := node.(*hclsyntax.FunctionCallExpr)
-		return ok && x.Name == y.Name && m.exprs(x.Args, y.Args) && x.ExpandFinal == y.ExpandFinal
+		return ok &&
+			m.potentialWildcardIdentEqual(x.Name, y.Name) &&
+			m.exprs(x.Args, y.Args) && x.ExpandFinal == y.ExpandFinal
 	case *hclsyntax.ForExpr:
 		y, ok := node.(*hclsyntax.ForExpr)
-		return ok && x.KeyVar == y.KeyVar && x.ValVar == y.ValVar && m.node(x.CollExpr, y.CollExpr) &&
-			m.node(x.KeyExpr, y.KeyExpr) && m.node(x.ValExpr, y.ValExpr) && m.node(x.CondExpr, y.CondExpr) && x.Group == y.Group
+		return ok &&
+			m.potentialWildcardIdentEqual(x.KeyVar, y.KeyVar) &&
+			m.potentialWildcardIdentEqual(x.ValVar, y.ValVar) &&
+			m.node(x.CollExpr, y.CollExpr) && m.node(x.KeyExpr, y.KeyExpr) && m.node(x.ValExpr, y.ValExpr) && m.node(x.CondExpr, y.CondExpr) && x.Group == y.Group
 	case *hclsyntax.IndexExpr:
 		y, ok := node.(*hclsyntax.IndexExpr)
 		return ok && m.node(x.Collection, y.Collection) && m.node(x.Key, y.Key)
@@ -112,10 +129,14 @@ func (m *matcher) node(expr, node hclsyntax.Node) bool {
 		name := fromWildName(xname)
 		prev, ok := m.values[name]
 		if !ok {
-			m.values[name] = node
+			m.values[name] = newNodeOrStringForNode(node)
 			return true
 		}
-		return m.node(prev, node)
+		if prev.String == nil {
+			return m.node(prev.Node, node)
+		}
+		nodeVar, ok := variableExpr(node)
+		return ok && nodeVar == *prev.String
 	case *hclsyntax.RelativeTraversalExpr:
 		y, ok := node.(*hclsyntax.RelativeTraversalExpr)
 		return ok && m.traversal(x.Traversal, y.Traversal) && m.node(x.Source, y.Source)
@@ -135,6 +156,29 @@ func (m *matcher) node(expr, node hclsyntax.Node) bool {
 	default:
 		panic(fmt.Sprintf("unexpected node: %T", x))
 	}
+}
+
+func (m *matcher) potentialWildcardIdentEqual(identX, identY string) bool {
+	if !isWildName(identX) {
+		return identX == identY
+	}
+	name := fromWildName(identX)
+	prev, ok := m.values[name]
+	if !ok {
+		m.values[name] = newNodeOrStringForString(name)
+		return true
+	}
+
+	var prevName string
+	if prev.String != nil {
+		prevName = *prev.String
+	} else {
+		prevName, ok = variableExpr(prev.Node)
+		if !ok {
+			return false
+		}
+	}
+	return prevName == identY
 }
 
 func (m *matcher) exprs(exprs1, exprs2 []hclsyntax.Expression) bool {
@@ -230,8 +274,8 @@ type fullToken struct {
 }
 
 const (
-	wildcardLit                       = "&"
-	wildcardToken hclsyntax.TokenType = hclsyntax.TokenBitwiseAnd
+	wildcardLit       = "&"
+	wildcardTokenType = hclsyntax.TokenBitwiseAnd
 )
 
 func tokenize(src string) ([]fullToken, error) {
@@ -267,7 +311,7 @@ func tokenize(src string) ([]fullToken, error) {
 				Range: tok.Range,
 				Bytes: tok.Bytes,
 			})
-		} else if tok.Type == wildcardToken {
+		} else if tok.Type == wildcardTokenType {
 			gotWildcard = true
 		} else {
 			toks = append(toks, fullToken{
@@ -280,8 +324,8 @@ func tokenize(src string) ([]fullToken, error) {
 	return toks, nil
 }
 
-func variableExpr(exp hclsyntax.Expression) (string, bool) {
-	vexp, ok := exp.(*hclsyntax.ScopeTraversalExpr)
+func variableExpr(node hclsyntax.Node) (string, bool) {
+	vexp, ok := node.(*hclsyntax.ScopeTraversalExpr)
 	if !(ok && len(vexp.Traversal) == 1 && !vexp.Traversal.IsRelative()) {
 		return "", false
 	}

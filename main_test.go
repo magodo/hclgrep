@@ -12,17 +12,38 @@ func TestGrep(t *testing.T) {
 		{"true", "false", false},
 
 		{"&x", "abc", true},
+		{"&x", "[1,2,3]", true},
+		{"&x", "{a = b}", true},
+
 		{"[1, &x, 3]", "[1, 2, 3]", true},
 		{"[1, &x, 3]", "[1, 3]", false},
 		{"{a = &x}", "{a = b}", true},
 		{"{&x = &y}", "{a = b}", true},
 		{"{&x = &x}", "{a = b}", false},
 		{"{&x = &x}", "{a = a}", true},
+		{
+			expr: `{
+  &x = &y
+  &y = &x
+}`,
+			src: `{
+  a = b
+  b = a
+}`,
+			wantMatch: true},
 
 		{"sort(&x)", "sort(a)", true},
 
-		{"{for k, v in map: &k => upper(&v)}", "{for k, v in map: key => upper(val)}", true},
+		{"{for k, v in map: &k => upper(&v)}", "{for k, v in map: k => upper(v)}", true},
+		{"{for &k, &v in map: &k => upper(&v)}", "{for k, v in map: k => upper(v)}", true},
+
 		{"foo[&x]", "foo[a]", true},
+
+		{"&x()", "sort()", true},
+		{"&x(&y)", "sort([1,2,3])", true},
+		{"&x([])", "sort([1,2,3])", false},
+
+		{"&a[count.index]", "var.subnet_ids[count.index]", true},
 	}
 	for _, tc := range tests {
 		match, err := grep(tc.expr, tc.src)
