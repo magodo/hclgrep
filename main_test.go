@@ -284,6 +284,19 @@ block {
 `,
 			anyWant: matches(1),
 		},
+		{
+			expr: `
+blk {
+  $_ {}
+}
+`,
+			src: `
+blk {
+  blk1 {}
+}
+`,
+			anyWant: matches(1),
+		},
 
 		// TODO: wildcard among body
 
@@ -328,7 +341,39 @@ c = d
 `,
 			anyWant: matches(1),
 		},
-		// TODO: wildcard among attributes
+		{
+			expr: `
+a = $x
+c = $x
+`,
+			src: `
+a = b
+c = d
+`,
+			anyWant: noMatch,
+		},
+		{
+			expr: `
+a = $x
+c = $x
+`,
+			src: `
+a = b
+c = b
+`,
+			anyWant: matches(1),
+		},
+		{
+			expr: `
+a = $x
+c = $x
+`,
+			src: `
+a = b
+c = b
+`,
+			anyWant: matches(1),
+		},
 
 		// block
 		{
@@ -368,8 +413,28 @@ c = d
 }`,
 			anyWant: matches(1),
 		},
-
-		// TODO: wildcard among block
+		{
+			expr: `blk {
+	a = $x
+	c = $x
+}`,
+			src: `blk {
+	a = b
+	c = d
+}`,
+			anyWant: noMatch,
+		},
+		{
+			expr: `blk {
+	a = $x
+	c = $x
+}`,
+			src: `blk {
+	a = b
+	c = b
+}`,
+			anyWant: matches(1),
+		},
 
 		// block body
 		{
@@ -400,8 +465,28 @@ c = d
 }`,
 			anyWant: matches(1),
 		},
-
-		// TODO: wildcard among block body
+		{
+			expr: `{
+	a = $x
+	a = $x
+}`,
+			src: `{
+	a = b
+	c = d
+}`,
+			anyWant: noMatch,
+		},
+		{
+			expr: `{
+	a = $x
+	c = $x
+}`,
+			src: `{
+	a = b
+	c = b
+}`,
+			anyWant: matches(1),
+		},
 
 		// blocks
 		{
@@ -447,8 +532,44 @@ blk2 {
 }`,
 			anyWant: matches(1),
 		},
+		{
+			expr: `
+$x {
+	a = b
+}
 
-		// TODO: use wildcard among blocks
+$x {
+    c = d
+}`,
+			src: `
+blk1 {
+	a = b
+}
+
+blk2 {
+    c = d
+}`,
+			anyWant: noMatch,
+		},
+		{
+			expr: `
+$x {
+	a = b
+}
+
+$x {
+    c = d
+}`,
+			src: `
+blk1 {
+	a = b
+}
+
+blk1 {
+    c = d
+}`,
+			anyWant: matches(1),
+		},
 
 		// expr tokenize errors
 		{"$", "", tokErr(":1,2-2: $ must be followed by ident, got TokenEOF")},

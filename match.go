@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -113,41 +114,21 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 	case *hclsyntax.Body:
 		y, ok := node.(*hclsyntax.Body)
 		return ok && m.body(x, y)
-	// Attribute(s)
-	case hclsyntax.Attributes:
-		y, ok := node.(hclsyntax.Attributes)
-		return ok && m.attributes(x, y)
+	// Attribute
 	case *hclsyntax.Attribute:
 		y, ok := node.(*hclsyntax.Attribute)
 		return ok && m.attribute(x, y)
-	// Block(s)
-	case hclsyntax.Blocks:
-		y, ok := node.(hclsyntax.Blocks)
-		return ok && m.blocks(x, y)
+	// Block
 	case *hclsyntax.Block:
 		y, ok := node.(*hclsyntax.Block)
 		return ok && m.block(x, y)
 	default:
-		// Including: hclsyntax.ChildScope
+		// Including:
+		// - hclsyntax.ChildScope
+		// - hclsyntax.Blocks
+		// - hclsyntax.Attributes
 		panic(fmt.Sprintf("unexpected node: %T", x))
 	}
-}
-
-func (m *matcher) attributes(x, y hclsyntax.Attributes) bool {
-	if len(x) != len(y) {
-		return false
-	}
-	for k, elemx := range x {
-		if isWildName(k) {
-			// TODO: fix this once https://github.com/hashicorp/hcl/issues/503 got resolved
-			panic("wildcard is not supported in attributes due to https://github.com/hashicorp/hcl/issues/503")
-		}
-		elemy := y[k]
-		if !m.attribute(elemx, elemy) {
-			return false
-		}
-	}
-	return true
 }
 
 func (m *matcher) attribute(x, y *hclsyntax.Attribute) bool {
@@ -156,19 +137,6 @@ func (m *matcher) attribute(x, y *hclsyntax.Attribute) bool {
 	}
 	return m.node(x.Expr, y.Expr) &&
 		m.potentialWildcardIdentEqual(x.Name, y.Name)
-}
-
-func (m *matcher) blocks(x, y hclsyntax.Blocks) bool {
-	if len(x) != len(y) {
-		return false
-	}
-	for k, elemx := range x {
-		elemy := y[k]
-		if !m.block(elemx, elemy) {
-			return false
-		}
-	}
-	return true
 }
 
 func (m *matcher) block(x, y *hclsyntax.Block) bool {
@@ -185,7 +153,32 @@ func (m *matcher) body(x, y *hclsyntax.Body) bool {
 		return x == y
 	}
 
-	return m.attributes(x.Attributes, y.Attributes) && m.blocks(x.Blocks, y.Blocks)
+	// Sort the attributes/blocks to reserve the order in source
+	bodyEltsX := sortBody(x)
+	bodyEltsY := sortBody(y)
+
+	if len(bodyEltsX) != len(bodyEltsY) {
+		return false
+	}
+
+	for i, rawEltX := range bodyEltsX {
+		rawEltY := bodyEltsY[i]
+		switch eltx := rawEltX.(type) {
+		case *hclsyntax.Attribute:
+			elty, ok := rawEltY.(*hclsyntax.Attribute)
+			if !ok || !m.attribute(eltx, elty) {
+				return false
+			}
+		case *hclsyntax.Block:
+			elty, ok := rawEltY.(*hclsyntax.Block)
+			if !ok || !m.block(eltx, elty) {
+				return false
+			}
+		default:
+			panic("never reach here")
+		}
+	}
+	return true
 }
 
 func (m *matcher) potentialWildcardIdentsEqual(identX, identY []string) bool {
@@ -212,7 +205,7 @@ func (m *matcher) potentialWildcardIdentEqual(identX, identY string) bool {
 	}
 	prev, ok := m.values[name]
 	if !ok {
-		m.values[name] = newNodeOrStringForString(name)
+		m.values[name] = newNodeOrStringForString(identY)
 		return true
 	}
 
@@ -311,4 +304,26 @@ func variableExpr(node hclsyntax.Node) (string, bool) {
 		return "", false
 	}
 	return vexp.Traversal.RootName(), true
+}
+
+func sortBody(body *hclsyntax.Body) []interface{} {
+	l := len(body.Blocks) + len(body.Attributes)
+	m := make(map[int]interface{}, l)
+	offsets := make([]int, 0, l)
+	for _, blk := range body.Blocks {
+		offset := blk.Range().Start.Byte
+		m[offset] = blk
+		offsets = append(offsets, offset)
+	}
+	for _, attr := range body.Attributes {
+		offset := attr.Range().Start.Byte
+		m[offset] = attr
+		offsets = append(offsets, offset)
+	}
+	sort.Ints(offsets)
+	out := make([]interface{}, 0, l)
+	for _, offset := range offsets {
+		out = append(out, m[offset])
+	}
+	return out
 }
