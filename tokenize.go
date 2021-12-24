@@ -14,7 +14,7 @@ type exprTokenType hclsyntax.TokenType
 
 const (
 	_ exprTokenType = -iota
-	tokWildcard
+	TokenWildcard
 )
 
 type fullToken struct {
@@ -24,8 +24,7 @@ type fullToken struct {
 }
 
 const (
-	wildcardLit       = "&"
-	wildcardTokenType = hclsyntax.TokenBitwiseAnd
+	wildcardLit = "$"
 )
 
 func tokenize(src string) ([]fullToken, error) {
@@ -33,7 +32,7 @@ func tokenize(src string) ([]fullToken, error) {
 
 	var diags hcl.Diagnostics
 	for _, diag := range _diags {
-		if diag.Detail == "Bitwise operators are not supported. Did you mean boolean AND (\"&&\")?" {
+		if diag.Summary == "Invalid character" && string(diag.Subject.SliceBytes([]byte(src))) == "$" {
 			continue
 		}
 		diags = diags.Append(diag)
@@ -57,11 +56,11 @@ func tokenize(src string) ([]fullToken, error) {
 			}
 			gotWildcard = false
 			toks = append(toks, fullToken{
-				Type:  tokWildcard,
+				Type:  TokenWildcard,
 				Range: tok.Range,
 				Bytes: tok.Bytes,
 			})
-		} else if tok.Type == wildcardTokenType {
+		} else if tok.Type == hclsyntax.TokenInvalid && string(tok.Bytes) == wildcardLit {
 			gotWildcard = true
 		} else {
 			toks = append(toks, fullToken{

@@ -34,7 +34,7 @@ func grep(expr string, src string) (bool, error) {
 	for _, t := range toks {
 		var s string
 		switch {
-		case t.Type == tokWildcard:
+		case t.Type == TokenWildcard:
 			s = wildName(string(t.Bytes))
 		default:
 			s = string(t.Bytes)
