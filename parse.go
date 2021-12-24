@@ -8,11 +8,11 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
-var blockTempl = template.Must(template.New("block").Parse(`type {{ . }} `))
+var blockBodyTempl = template.Must(template.New("block_body").Parse(`type {{ . }} `))
 
-func asBlock(src []byte) []byte {
+func asBlockBody(src []byte) []byte {
 	var buf bytes.Buffer
-	if err := blockTempl.Execute(&buf, src); err != nil {
+	if err := blockBodyTempl.Execute(&buf, src); err != nil {
 		panic(err)
 	}
 	return buf.Bytes()
@@ -24,9 +24,9 @@ func parse(src []byte, filename string, start hcl.Pos) (hclsyntax.Node, hcl.Diag
 		return expr, nil
 	}
 
-	// try as block
-	if block, diags := hclsyntax.ParseConfig(asBlock(src), filename, start); !diags.HasErrors() {
-		return block.Body.(*hclsyntax.Body).Blocks[0], nil
+	// try as block body
+	if block, diags := hclsyntax.ParseConfig(asBlockBody(src), filename, start); !diags.HasErrors() {
+		return block.Body.(*hclsyntax.Body).Blocks[0].Body, nil
 	}
 
 	// try as file
@@ -34,5 +34,23 @@ func parse(src []byte, filename string, start hcl.Pos) (hclsyntax.Node, hcl.Diag
 	if diags.HasErrors() {
 		return nil, diags
 	}
-	return f.Body.(*hclsyntax.Body), nil
+	return bodyContent(f.Body.(*hclsyntax.Body)), nil
+}
+
+func bodyContent(body *hclsyntax.Body) hclsyntax.Node {
+	if body == nil {
+		return nil
+	}
+	if len(body.Blocks) == 0 && len(body.Attributes) == 1 {
+		var k string
+		for key := range body.Attributes {
+			k = key
+			break
+		}
+		return body.Attributes[k]
+	}
+	if len(body.Blocks) == 1 && len(body.Attributes) == 0 {
+		return body.Blocks[0]
+	}
+	return body
 }

@@ -24,6 +24,8 @@ func TestGrep(t *testing.T) {
 		expr, src string
 		anyWant   interface{}
 	}{
+		{"$x = $x", "a = a", matches(1)},
+
 		// literal expression
 		{"1", "1", matches(1)},
 		{"true", "false", noMatch},
@@ -282,26 +284,171 @@ block {
 `,
 			anyWant: matches(1),
 		},
-		//		{
-		//			expr: `
-		//$_
-		//block {
-		//  $_
-		//}
-		//`,
-		//			src: `
-		//a = 1
-		//block {
-		//b = 2
-		//}
-		//`,
-		//			anyWant: matches(1),
-		//		},
 
-		// TODO: Attribute
-		// TODO: Attributes
-		// TODO: Block
-		// TODO: Blocks
+		// TODO: wildcard among body
+
+		// attribute
+		{"a = a", "a = a", matches(1)},
+		{"a = a", "a = b", noMatch},
+
+		// attribute (wildcard)
+		{"$_", "a = a", matches(1)},
+		{"$x = $x", "a = a", matches(1)},
+		{"$x = $x", "a = b", noMatch},
+
+		// attributes
+		{
+			expr: `
+a = b
+c = d
+`,
+			src: `
+a = b
+c = d
+`,
+			anyWant: matches(1),
+		},
+		{
+			expr: `
+a = b
+c = d
+`,
+			src: `
+a = b
+`,
+			anyWant: noMatch,
+		},
+
+		// attributes (wildcard)
+		{
+			expr: `$_`,
+			src: `
+a = b
+c = d
+`,
+			anyWant: matches(1),
+		},
+		// TODO: wildcard among attributes
+
+		// block
+		{
+			expr: `blk {
+	a = b
+}`,
+			src: `blk {
+	a = b
+}`,
+			anyWant: matches(1),
+		},
+		{
+			expr: `blk {
+	a = b
+	c = d
+}`,
+			src: `blk {
+	a = b
+}`,
+			anyWant: noMatch,
+		},
+
+		// block (wildcard)
+		{
+			expr: "$_",
+			src: `blk {
+	a = b
+}`,
+			anyWant: matches(1),
+		},
+		{
+			expr: `$_ {
+    a = b
+}`,
+			src: `blk {
+	a = b
+}`,
+			anyWant: matches(1),
+		},
+
+		// TODO: wildcard among block
+
+		// block body
+		{
+			expr: `{
+	a = b
+}`,
+			src: `{
+	a = b
+}`,
+			anyWant: matches(1),
+		},
+		{
+			expr: `{
+	a = b
+}`,
+			src: `{
+	a = b
+	c = d
+}`,
+			anyWant: noMatch,
+		},
+
+		// block body (wildcard)
+		{
+			expr: "$_",
+			src: `{
+	a = b
+}`,
+			anyWant: matches(1),
+		},
+
+		// TODO: wildcard among block body
+
+		// blocks
+		{
+			expr: `blk1 {
+	a = b
+}
+
+blk2 {
+    c = d
+}`,
+			src: `blk1 {
+	a = b
+}
+
+blk2 {
+    c = d
+}`,
+			anyWant: matches(1),
+		},
+		{
+			expr: `blk1 {
+	a = b
+}
+
+blk2 {
+    c = d
+}`,
+			src: `blk1 {
+	a = b
+}`,
+			anyWant: noMatch,
+		},
+
+		// blocks (wildcard)
+		{
+			expr: `$_`,
+			src: `blk1 {
+	a = b
+}
+
+blk2 {
+    c = d
+}`,
+			anyWant: matches(1),
+		},
+
+		// TODO: use wildcard among blocks
 
 		// expr tokenize errors
 		{"$", "", tokErr(":1,2-2: $ must be followed by ident, got TokenEOF")},

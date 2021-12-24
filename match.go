@@ -138,6 +138,10 @@ func (m *matcher) attributes(x, y hclsyntax.Attributes) bool {
 		return false
 	}
 	for k, elemx := range x {
+		if isWildName(k) {
+			// TODO: fix this once https://github.com/hashicorp/hcl/issues/503 got resolved
+			panic("wildcard is not supported in attributes due to https://github.com/hashicorp/hcl/issues/503")
+		}
 		elemy := y[k]
 		if !m.attribute(elemx, elemy) {
 			return false
