@@ -125,6 +125,10 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 			return ok && m.traversal(x.Traversal, y.Traversal)
 		}
 		name := fromWildName(xname)
+		if name == "_" {
+			// values are discarded, matches anything
+			return true
+		}
 		prev, ok := m.values[name]
 		if !ok {
 			m.values[name] = newNodeOrStringForNode(node)
@@ -244,6 +248,10 @@ func (m *matcher) potentialWildcardIdentEqual(identX, identY string) bool {
 		return identX == identY
 	}
 	name := fromWildName(identX)
+	if name == "_" {
+		// values are discarded, matches anything
+		return true
+	}
 	prev, ok := m.values[name]
 	if !ok {
 		m.values[name] = newNodeOrStringForString(name)

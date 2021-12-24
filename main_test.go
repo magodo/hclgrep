@@ -45,6 +45,9 @@ func TestGrep(t *testing.T) {
 		{"$x()", "sort()", true},
 		{"$x($y)", "sort([1,2,3])", true},
 		{"$x([])", "sort([1,2,3])", false},
+
+		{"$_($_)", "sort(123)", true},
+		{"foo($_, $_)", "foo(1, 2)", true},
 	}
 	for _, tc := range tests {
 		match, err := grep(tc.expr, tc.src)
