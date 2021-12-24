@@ -46,9 +46,6 @@ func tokenize(src string) ([]fullToken, error) {
 		gotWildcard bool
 	)
 	for _, tok := range tokens {
-		if tok.Type == hclsyntax.TokenEOF {
-			break
-		}
 		if gotWildcard {
 			if tok.Type != hclsyntax.TokenIdent {
 				return nil, fmt.Errorf("%v: %s must be followed by ident, got %v",
@@ -60,7 +57,12 @@ func tokenize(src string) ([]fullToken, error) {
 				Range: tok.Range,
 				Bytes: tok.Bytes,
 			})
-		} else if tok.Type == hclsyntax.TokenInvalid && string(tok.Bytes) == wildcardLit {
+			continue
+		}
+		if tok.Type == hclsyntax.TokenEOF {
+			break
+		}
+		if tok.Type == hclsyntax.TokenInvalid && string(tok.Bytes) == wildcardLit {
 			gotWildcard = true
 		} else {
 			toks = append(toks, fullToken{

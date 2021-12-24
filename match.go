@@ -271,10 +271,10 @@ func (m *matcher) traverser(t1, t2 hcl.Traverser) bool {
 	switch t1 := t1.(type) {
 	case hcl.TraverseRoot:
 		t2, ok := t2.(hcl.TraverseRoot)
-		return ok && t1.Name == t2.Name
+		return ok && m.potentialWildcardIdentEqual(t1.Name, t2.Name)
 	case hcl.TraverseAttr:
 		t2, ok := t2.(hcl.TraverseAttr)
-		return ok && t1.Name == t2.Name
+		return ok && m.potentialWildcardIdentEqual(t1.Name, t2.Name)
 	case hcl.TraverseIndex:
 		t2, ok := t2.(hcl.TraverseIndex)
 		return ok && t1.Key.Equals(t2.Key).True()
