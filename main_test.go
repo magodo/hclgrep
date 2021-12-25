@@ -24,6 +24,24 @@ func TestGrep(t *testing.T) {
 		expr, src string
 		anyWant   interface{}
 	}{
+		{"{for $k, $v in map: $k => upper($v)}", "{for k, v in map: k => upper(v)}", matches(1)},
+		{
+			expr: `
+@_
+
+blk {
+ @_
+}
+`,
+			src: `
+a = b
+
+blk {
+ blk1 {}
+}
+`,
+			anyWant: matches(1),
+		},
 		{"$x = $x", "a = a", matches(1)},
 
 		// literal expression
@@ -297,8 +315,6 @@ blk {
 `,
 			anyWant: matches(1),
 		},
-
-		// TODO: wildcard among body
 
 		// attribute
 		{"a = a", "a = a", matches(1)},

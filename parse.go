@@ -18,14 +18,18 @@ func asBlockBody(src []byte) []byte {
 	return buf.Bytes()
 }
 
-func parse(src []byte, filename string, start hcl.Pos) (hclsyntax.Node, hcl.Diagnostics) {
+func parse(src []byte, filename string, start hcl.Pos, maybeBlockBody bool) (hclsyntax.Node, hcl.Diagnostics) {
 	// try as expr
 	if expr, diags := hclsyntax.ParseExpression(src, filename, start); !diags.HasErrors() {
 		return expr, nil
 	}
 
-	// try as block body
-	if block, diags := hclsyntax.ParseConfig(asBlockBody(src), filename, start); !diags.HasErrors() {
+	if maybeBlockBody {
+		// try as block body
+		block, diags := hclsyntax.ParseConfig(asBlockBody(src), filename, start)
+		if diags.HasErrors() {
+			return nil, diags
+		}
 		return block.Body.(*hclsyntax.Body).Blocks[0].Body, nil
 	}
 

@@ -298,6 +298,18 @@ func fromWildName(name string) string {
 	return strings.TrimPrefix(name, wildPrefix)
 }
 
+func wildAttr(name string) string {
+	return wildName(name) + "=_"
+}
+
+func isWildAttr(attr string) bool {
+	return strings.HasPrefix(attr, wildPrefix) && strings.HasSuffix(attr, "=_")
+}
+
+func fromWildAttr(attr string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(attr, wildPrefix), "=_")
+}
+
 func variableExpr(node hclsyntax.Node) (string, bool) {
 	vexp, ok := node.(*hclsyntax.ScopeTraversalExpr)
 	if !(ok && len(vexp.Traversal) == 1 && !vexp.Traversal.IsRelative()) {

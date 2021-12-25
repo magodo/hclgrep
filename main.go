@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"github.com/hashicorp/hcl/v2"
@@ -27,29 +26,31 @@ func grep(expr string, src string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("cannot tokenize expr: %v", err)
 	}
-	var buf bytes.Buffer
-	for i, t := range toks {
-		var s string
-		switch {
-		case t.Type == TokenWildcard:
-			s = wildName(string(t.Bytes))
-		default:
-			s = string(t.Bytes)
-		}
-		buf.WriteString(s)
 
-		if i+1 < len(toks) {
-			peekTok := toks[i+1]
-			if peekTok.Type == exprTokenType(hclsyntax.TokenIdent) || peekTok.Type == TokenWildcard {
-				buf.WriteByte(' ') // for e.g. consecutive idents (e.g. ForExpr)
-			}
-		}
-	}
-	astExpr, diags := parse(buf.Bytes(), "", hcl.InitialPos)
+	astExpr, diags := parse(toks.Bytes(), "", hcl.InitialPos, toks[0].Type == exprTokenType(hclsyntax.TokenOBrace))
 	if diags.HasErrors() {
+		// HCL body only allows attribute or block, but not expression. This makes the substituted "wildcard expression" failed to parse.
+		// Here we further check the diags and adjust those wildcard substitutions into "wildcard attribute".
+		for _, diag := range diags {
+			if diag.Detail != "An argument or block definition is required here. To set an argument, use the equals sign \"=\" to introduce the argument value." {
+				return false, fmt.Errorf("cannot parse expr: %v", diags.Error())
+			}
+
+			// The diag range is actually the violating identifier's range, ensure it is the "wildcard expression"
+			tokMap := map[hcl.Range]fullToken{}
+			for _, tok := range toks {
+				tokMap[tok.Range] = tok
+			}
+			if tok, ok := tokMap[*diag.Subject]; !ok || tok.Type != TokenWildcard {
+				return false, fmt.Errorf("cannot parse expr: %v", diags.Error())
+			}
+
+		}
+
 		return false, fmt.Errorf("cannot parse expr: %v", diags.Error())
 	}
-	astSrc, diags := parse([]byte(src), "", hcl.InitialPos)
+
+	astSrc, diags := parse([]byte(src), "", hcl.InitialPos, toks[0].Type == exprTokenType(hclsyntax.TokenOBrace))
 	if diags.HasErrors() {
 		return false, fmt.Errorf("cannot parse src: %v", diags.Error())
 	}
