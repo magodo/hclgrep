@@ -109,7 +109,7 @@ func (toks fullTokens) Bytes() []byte {
 
 		if i+1 < len(toks) {
 			peekTok := toks[i+1]
-			if peekTok.Type == exprTokenType(hclsyntax.TokenIdent) || peekTok.Type == TokenWildcard {
+			if peekTok.Type == exprTokenType(hclsyntax.TokenIdent) || peekTok.Type == TokenWildcard || peekTok.Type == TokenAttrWildcard {
 				buf.WriteByte(' ') // for e.g. consecutive idents (e.g. ForExpr)
 			}
 		}

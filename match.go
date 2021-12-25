@@ -80,20 +80,7 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 			return ok && m.traversal(x.Traversal, y.Traversal)
 		}
 		name := fromWildName(xname)
-		if name == "_" {
-			// values are discarded, matches anything
-			return true
-		}
-		prev, ok := m.values[name]
-		if !ok {
-			m.values[name] = newNodeOrStringForNode(node)
-			return true
-		}
-		if prev.String == nil {
-			return m.node(prev.Node, node)
-		}
-		nodeVar, ok := variableExpr(node)
-		return ok && nodeVar == *prev.String
+		return m.wildcardMatchNode(name, node)
 	case *hclsyntax.RelativeTraversalExpr:
 		y, ok := node.(*hclsyntax.RelativeTraversalExpr)
 		return ok && m.traversal(x.Traversal, y.Traversal) && m.node(x.Source, y.Source)
@@ -135,6 +122,10 @@ func (m *matcher) attribute(x, y *hclsyntax.Attribute) bool {
 	if x == nil || y == nil {
 		return x == y
 	}
+	if isWildAttr(x.Name, x.Expr) {
+		name := fromWildName(x.Name)
+		return m.wildcardMatchNode(name, y)
+	}
 	return m.node(x.Expr, y.Expr) &&
 		m.potentialWildcardIdentEqual(x.Name, y.Name)
 }
@@ -165,6 +156,13 @@ func (m *matcher) body(x, y *hclsyntax.Body) bool {
 		rawEltY := bodyEltsY[i]
 		switch eltx := rawEltX.(type) {
 		case *hclsyntax.Attribute:
+			if isWildAttr(eltx.Name, eltx.Expr) {
+				name := fromWildName(eltx.Name)
+				if !m.wildcardMatchNode(name, rawEltY.(hclsyntax.Node)) {
+					return false
+				}
+				continue
+			}
 			elty, ok := rawEltY.(*hclsyntax.Attribute)
 			if !ok || !m.attribute(eltx, elty) {
 				return false
@@ -199,26 +197,7 @@ func (m *matcher) potentialWildcardIdentEqual(identX, identY string) bool {
 		return identX == identY
 	}
 	name := fromWildName(identX)
-	if name == "_" {
-		// values are discarded, matches anything
-		return true
-	}
-	prev, ok := m.values[name]
-	if !ok {
-		m.values[name] = newNodeOrStringForString(identY)
-		return true
-	}
-
-	var prevName string
-	if prev.String != nil {
-		prevName = *prev.String
-	} else {
-		prevName, ok = variableExpr(prev.Node)
-		if !ok {
-			return false
-		}
-	}
-	return prevName == identY
+	return m.wildcardMatchString(name, identY)
 }
 
 func (m *matcher) exprs(exprs1, exprs2 []hclsyntax.Expression) bool {
@@ -283,7 +262,50 @@ func (m *matcher) traverser(t1, t2 hcl.Traverser) bool {
 	}
 }
 
-const wildPrefix = "hclgrep_"
+func (m *matcher) wildcardMatchNode(name string, node hclsyntax.Node) bool {
+	if name == "_" {
+		// values are discarded, matches anything
+		return true
+	}
+	prev, ok := m.values[name]
+	if !ok {
+		m.values[name] = newNodeOrStringForNode(node)
+		return true
+	}
+	if prev.String == nil {
+		return m.node(prev.Node, node)
+	}
+	nodeVar, ok := variableExpr(node)
+	return ok && nodeVar == *prev.String
+}
+
+func (m *matcher) wildcardMatchString(name, target string) bool {
+	if name == "_" {
+		// values are discarded, matches anything
+		return true
+	}
+	prev, ok := m.values[name]
+	if !ok {
+		m.values[name] = newNodeOrStringForString(target)
+		return true
+	}
+
+	var prevName string
+	if prev.String != nil {
+		prevName = *prev.String
+	} else {
+		prevName, ok = variableExpr(prev.Node)
+		if !ok {
+			return false
+		}
+	}
+	return prevName == target
+}
+
+const (
+	wildPrefix    = "hclgrep_"
+	wildAttrValue = "hclgrepattr"
+)
 
 func wildName(name string) string {
 	// good enough for now
@@ -299,15 +321,16 @@ func fromWildName(name string) string {
 }
 
 func wildAttr(name string) string {
-	return wildName(name) + "=_"
+	return wildName(name) + "=" + wildAttrValue
 }
 
-func isWildAttr(attr string) bool {
-	return strings.HasPrefix(attr, wildPrefix) && strings.HasSuffix(attr, "=_")
-}
+func isWildAttr(key string, value hclsyntax.Expression) bool {
+	v, ok := variableExpr(value)
+	if !ok || v != wildAttrValue {
+		return false
+	}
 
-func fromWildAttr(attr string) string {
-	return strings.TrimSuffix(strings.TrimPrefix(attr, wildPrefix), "=_")
+	return isWildName(key)
 }
 
 func variableExpr(node hclsyntax.Node) (string, bool) {
