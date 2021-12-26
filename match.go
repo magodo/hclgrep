@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -24,6 +25,7 @@ func newNodeOrStringForNode(node hclsyntax.Node) nodeOrString {
 
 type matcher struct {
 	values map[string]nodeOrString
+	count  int
 }
 
 func (m *matcher) node(pattern, node hclsyntax.Node) bool {
@@ -123,7 +125,7 @@ func (m *matcher) attribute(x, y *hclsyntax.Attribute) bool {
 		return x == y
 	}
 	if isWildAttr(x.Name, x.Expr) {
-		name := fromWildName(x.Name)
+		name := fromWildAttrName(x.Name)
 		return m.wildcardMatchNode(name, y)
 	}
 	return m.node(x.Expr, y.Expr) &&
@@ -157,7 +159,7 @@ func (m *matcher) body(x, y *hclsyntax.Body) bool {
 		switch eltx := rawEltX.(type) {
 		case *hclsyntax.Attribute:
 			if isWildAttr(eltx.Name, eltx.Expr) {
-				name := fromWildName(eltx.Name)
+				name := fromWildAttrName(eltx.Name)
 				if !m.wildcardMatchNode(name, rawEltY.(hclsyntax.Node)) {
 					return false
 				}
@@ -320,17 +322,25 @@ func fromWildName(name string) string {
 	return strings.TrimPrefix(name, wildPrefix)
 }
 
+var wildattrMap = map[string]int{}
+
 func wildAttr(name string) string {
-	return wildName(name) + "=" + wildAttrValue
+	attr := wildName(name) + "-" + strconv.Itoa(wildattrMap[name]) + "=" + wildAttrValue
+	wildattrMap[name] += 1
+	return attr
 }
 
 func isWildAttr(key string, value hclsyntax.Expression) bool {
 	v, ok := variableExpr(value)
-	if !ok || v != wildAttrValue {
+	if !(ok && v == wildAttrValue) {
 		return false
 	}
 
-	return isWildName(key)
+	return isWildName(strings.Split(key, "-")[0])
+}
+
+func fromWildAttrName(name string) string {
+	return strings.TrimPrefix(strings.Split(name, "-")[0], wildPrefix)
 }
 
 func variableExpr(node hclsyntax.Node) (string, bool) {

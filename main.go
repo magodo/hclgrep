@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"log"
 )
 
 func main() {
@@ -21,22 +22,31 @@ func main() {
 	fmt.Println(match)
 }
 
-func grep(expr string, src string) (bool, error) {
+func grep(expr string, src string) (int, error) {
 	toks, err := tokenize(expr)
 	if err != nil {
-		return false, fmt.Errorf("cannot tokenize expr: %v", err)
+		return 0, fmt.Errorf("cannot tokenize expr: %v", err)
 	}
 
 	p := toks.Bytes()
-	astExpr, diags := parse(p, "", hcl.InitialPos, toks[0].Type == exprTokenType(hclsyntax.TokenOBrace))
+	exprNode, diags := parse(p, "", hcl.InitialPos, toks[0].Type == exprTokenType(hclsyntax.TokenOBrace))
 	if diags.HasErrors() {
-		return false, fmt.Errorf("cannot parse expr: %v", diags.Error())
+		return 0, fmt.Errorf("cannot parse expr: %v", diags.Error())
 	}
 
-	astSrc, diags := parse([]byte(src), "", hcl.InitialPos, toks[0].Type == exprTokenType(hclsyntax.TokenOBrace))
+	srcNode, diags := parse([]byte(src), "", hcl.InitialPos, toks[0].Type == exprTokenType(hclsyntax.TokenOBrace))
 	if diags.HasErrors() {
-		return false, fmt.Errorf("cannot parse src: %v", diags.Error())
+		return 0, fmt.Errorf("cannot parse src: %v", diags.Error())
 	}
-	m := matcher{values: map[string]nodeOrString{}}
-	return m.node(astExpr, astSrc), nil
+	m := matcher{values: map[string]nodeOrString{}, count: 0}
+	match := func(srcNode hclsyntax.Node) {
+		if m.node(exprNode, srcNode) {
+			m.count++
+		}
+	}
+	hclsyntax.VisitAll(srcNode, func(node hclsyntax.Node) hcl.Diagnostics {
+		match(node)
+		return nil
+	})
+	return m.count, nil
 }
