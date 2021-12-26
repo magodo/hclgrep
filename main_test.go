@@ -18,20 +18,8 @@ func parseErr(msg string) wantErr {
 func TestGrep(t *testing.T) {
 	tests := []struct {
 		expr, src string
-		anyWant   interface{}
+		count     interface{}
 	}{
-		{
-			expr: `@x`,
-			src: `
-blk {
-	a = 1
-	block {
-	  b = 2
-	}
-}
-`,
-			anyWant: 1,
-		},
 		{"$x = $x", "a = a", 1},
 
 		// literal expression
@@ -52,6 +40,31 @@ blk {
 		{"[1, $_, 3]", "[1, 3]", 0},
 		{"[1, $x, $x]", "[1, 2, 2]", 1},
 		{"[1, $x, $x]", "[1, 2, 3]", 0},
+		{
+			expr: `
+[
+	$x,
+	1,
+	$x,
+]`,
+			src: `
+[
+	2,
+	1,
+	2,
+]`,
+			count: 1,
+		},
+		{
+			expr: `
+[
+	$x,
+	1,
+	$x,
+]`,
+			src:   `[2, 1, 2]`,
+			count: 1,
+		},
 
 		// object const expression
 		{"{a = b}", "{a = b}", 1},
@@ -67,7 +80,7 @@ blk {
 			a = b
 			c = d
 		}`,
-			anyWant: 1,
+			count: 1,
 		},
 
 		// object const expression (wildcard)
@@ -85,7 +98,7 @@ blk {
 			a = b
 			c = b
 		}`,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -98,7 +111,20 @@ blk {
 			a = b
 			c = d
 		}`,
-			anyWant: 0,
+			count: 0,
+		},
+		{
+			expr: `
+		{
+			$_ = $_
+			$_ = $_
+		}`,
+			src: `
+		{
+			a = b
+			c = d
+		}`,
+			count: 1,
 		},
 
 		// template expression
@@ -113,7 +139,7 @@ EOF
 content
 EOF
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `<<EOF
@@ -124,7 +150,7 @@ EOF
 other content
 EOF
 `,
-			anyWant: 0,
+			count: 0,
 		},
 
 		// template expression (wildcard)
@@ -135,7 +161,7 @@ EOF
 content
 EOF
 `,
-			anyWant: 1,
+			count: 1,
 		},
 
 		// function call expression
@@ -266,7 +292,7 @@ block {
   b = 2
 }
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -278,7 +304,7 @@ block {
 			src: `
 a = 1
 `,
-			anyWant: 0,
+			count: 0,
 		},
 
 		// body (wildcard)
@@ -295,7 +321,7 @@ blk {
 	}
 }
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `@x`,
@@ -307,7 +333,7 @@ blk {
 	}
 }
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -320,7 +346,7 @@ blk {
   blk1 {}
 }
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -337,7 +363,7 @@ blk {
  blk1 {}
 }
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -354,7 +380,7 @@ blk {
  a = b
 }
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -371,7 +397,7 @@ blk {
  a = c
 }
 `,
-			anyWant: 0,
+			count: 0,
 		},
 		{
 			expr: `
@@ -388,7 +414,7 @@ blk {
  blk1 {}
 }
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -405,7 +431,7 @@ blk {
  blk1 {}
 }
 `,
-			anyWant: 0,
+			count: 0,
 		},
 
 		// attribute
@@ -426,7 +452,7 @@ c = d
 a = b
 c = d
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -436,7 +462,7 @@ c = d
 			src: `
 a = b
 `,
-			anyWant: 0,
+			count: 0,
 		},
 
 		// attributes (wildcard)
@@ -449,7 +475,7 @@ a = b
 a = b
 c = d
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -460,7 +486,7 @@ c = $x
 a = b
 c = d
 `,
-			anyWant: 0,
+			count: 0,
 		},
 		{
 			expr: `
@@ -471,7 +497,7 @@ c = $x
 a = b
 c = b
 `,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `
@@ -482,7 +508,7 @@ c = $x
 a = b
 c = b
 `,
-			anyWant: 1,
+			count: 1,
 		},
 
 		// block
@@ -493,7 +519,7 @@ c = b
 			src: `blk {
 	a = b
 }`,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `blk {
@@ -503,7 +529,7 @@ c = b
 			src: `blk {
 	a = b
 }`,
-			anyWant: 0,
+			count: 0,
 		},
 
 		// block (wildcard)
@@ -514,7 +540,7 @@ c = b
 			src: `blk {
 	a = b
 }`,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `blk {
@@ -525,7 +551,7 @@ c = b
 	a = b
 	c = d
 }`,
-			anyWant: 0,
+			count: 0,
 		},
 		{
 			expr: `blk {
@@ -536,7 +562,7 @@ c = b
 	a = b
 	c = b
 }`,
-			anyWant: 1,
+			count: 1,
 		},
 
 		// block body
@@ -547,7 +573,7 @@ c = b
 			src: `{
 	a = b
 }`,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `{
@@ -557,7 +583,7 @@ c = b
 	a = b
 	c = d
 }`,
-			anyWant: 0,
+			count: 0,
 		},
 
 		// block body (wildcard)
@@ -565,7 +591,7 @@ c = b
 			expr: "$_",
 			src: `{
 }`,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `{
@@ -576,7 +602,7 @@ c = b
 	a = b
 	c = d
 }`,
-			anyWant: 0,
+			count: 0,
 		},
 		{
 			expr: `{
@@ -587,7 +613,7 @@ c = b
 	a = b
 	c = b
 }`,
-			anyWant: 1,
+			count: 1,
 		},
 
 		// blocks
@@ -606,7 +632,7 @@ blk2 {
 blk2 {
     c = d
 }`,
-			anyWant: 1,
+			count: 1,
 		},
 		{
 			expr: `blk1 {
@@ -619,7 +645,7 @@ blk2 {
 			src: `blk1 {
 	a = b
 }`,
-			anyWant: 0,
+			count: 0,
 		},
 
 		// blocks (wildcard)
@@ -640,7 +666,7 @@ blk1 {
 blk2 {
     c = d
 }`,
-			anyWant: 0,
+			count: 0,
 		},
 		{
 			expr: `
@@ -659,7 +685,7 @@ blk1 {
 blk1 {
     c = d
 }`,
-			anyWant: 1,
+			count: 1,
 		},
 
 		// expr tokenize errors
@@ -671,7 +697,7 @@ blk1 {
 
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("%02d", i), func(t *testing.T) {
-			grepTest(t, tc.expr, tc.src, tc.anyWant)
+			grepTest(t, tc.expr, tc.src, tc.count)
 		})
 	}
 }
