@@ -20,8 +20,6 @@ func TestGrep(t *testing.T) {
 		expr, src string
 		count     interface{}
 	}{
-		{"$x = $x", "a = a", 1},
-
 		// literal expression
 		{"1", "1", 1},
 		{"true", "false", 0},
