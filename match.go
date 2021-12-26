@@ -25,12 +25,23 @@ func newNodeOrStringForNode(node hclsyntax.Node) nodeOrString {
 
 type matcher struct {
 	values map[string]nodeOrString
-	count  int
 }
 
 func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 	if pattern == nil || node == nil {
 		return pattern == node
+	}
+	if pattern != nil {
+		switch node := node.(type) {
+		case hclsyntax.Attributes:
+			if len(node) == 0 {
+				return false
+			}
+		case hclsyntax.Blocks:
+			if len(node) == 0 {
+				return false
+			}
+		}
 	}
 	switch x := pattern.(type) {
 	// Expressions
@@ -105,6 +116,17 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 		return ok && m.body(x, y)
 	// Attribute
 	case *hclsyntax.Attribute:
+		if isWildAttr(x.Name, x.Expr) {
+			// The wildcard attribute can only match attribute or block
+			switch node := node.(type) {
+			case *hclsyntax.Attribute,
+				*hclsyntax.Block:
+				name := fromWildAttrName(x.Name)
+				return m.wildcardMatchNode(name, node.(hclsyntax.Node))
+			default:
+				return false
+			}
+		}
 		y, ok := node.(*hclsyntax.Attribute)
 		return ok && m.attribute(x, y)
 	// Block

@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"testing"
+
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 type wantErr string
@@ -331,7 +333,7 @@ blk {
 	}
 }
 `,
-			count: 1,
+			count: 4,
 		},
 		{
 			expr: `
@@ -562,55 +564,19 @@ c = b
 }`,
 			count: 1,
 		},
-
-		// block body
 		{
-			expr: `{
-	a = b
-}`,
-			src: `{
-	a = b
-}`,
-			count: 1,
-		},
-		{
-			expr: `{
-	a = b
-}`,
-			src: `{
-	a = b
-	c = d
-}`,
-			count: 0,
-		},
-
-		// block body (wildcard)
-		{
-			expr: "$_",
-			src: `{
-}`,
-			count: 1,
-		},
-		{
-			expr: `{
+			expr: `$a {
 	a = $x
-	a = $x
+	b = ""
 }`,
-			src: `{
-	a = b
-	c = d
-}`,
-			count: 0,
-		},
-		{
-			expr: `{
-	a = $x
-	c = $x
-}`,
-			src: `{
-	a = b
-	c = b
-}`,
+			src: `
+blk1 {
+	blk2 {
+		a = file("./a.txt")
+		b = ""
+	}
+}
+`,
 			count: 1,
 		},
 
@@ -700,11 +666,23 @@ blk1 {
 	}
 }
 
+func grepStrs(expr, src string) ([]hclsyntax.Node, error) {
+	exprNode, err := compileExpr(expr)
+	if err != nil {
+		return nil, err
+	}
+	srcNode, err := compileExpr(src)
+	if err != nil {
+		return nil, err
+	}
+	return search(exprNode, srcNode), nil
+}
+
 func grepTest(t *testing.T, expr, src string, anyWant interface{}) {
 	terr := func(format string, a ...interface{}) {
 		t.Errorf("%s | %s: %s", expr, src, fmt.Sprintf(format, a...))
 	}
-	gotCount, err := grep(expr, src)
+	matches, err := grepStrs(expr, src)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {
@@ -717,8 +695,8 @@ func grepTest(t *testing.T, expr, src string, anyWant interface{}) {
 			terr("unexpected error: %v", err)
 			return
 		}
-		if gotCount != want {
-			terr("wanted %d matches, got=%d", want, gotCount)
+		if len(matches) != want {
+			terr("wanted %d matches, got=%d", want, len(matches))
 		}
 	default:
 		panic(fmt.Sprintf("unexpected anyWant type: %T", anyWant))
