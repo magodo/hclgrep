@@ -10,11 +10,42 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
+var usage = func() {
+	fmt.Fprint(os.Stderr, `usage: hclgrep pattern [files]
+
+hclgrep performs a query on the given HCL(v2) files.
+
+A pattern is a piece of HCL code which may include wildcards. It can be:
+
+- A body (zero or more attributes, and zero or more blocks)
+- An expression
+
+There are two types of wildcards, depending on the scope it resides in:
+
+- Attribute wildcard ("@"): represents either an attribute or a block
+- Expression wildcard ("$"): represents an expression or a place that a string is accepted (i.e. as a block type, block label)
+
+The wildcards are followed by a name. Each wildcard with the same name must match the same node/string, excluding "_". Example:
+
+    $x.$_ = $x # assignment of self to a field in self
+
+If "*" is before the name, it will match any number of nodes. Example:
+
+    [$*_] # any number of elements in a tuple
+
+    resource foo "name" {
+        @*_  # any number of attributes/blocks inside the resource block body
+    }
+`)
+}
+
 func main() {
+	flag.Usage = usage
 	flag.Parse()
 	args := flag.Args()
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "need at least two args")
+		fmt.Fprintln(os.Stderr, "hclgrep: need at least two args, try 'hclgrep -h' for more information")
+		os.Exit(1)
 	}
 	if err := grepArgs(args[0], args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
