@@ -10,21 +10,26 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
-type nodeOrString struct {
-	String *string
-	Node   hclsyntax.Node
+type substitution struct {
+	String         *string
+	Node           hclsyntax.Node
+	ObjectConsItem *hclsyntax.ObjectConsItem
 }
 
-func newNodeOrStringForString(s string) nodeOrString {
-	return nodeOrString{String: &s}
+func newStringSubstitution(s string) substitution {
+	return substitution{String: &s}
 }
 
-func newNodeOrStringForNode(node hclsyntax.Node) nodeOrString {
-	return nodeOrString{Node: node}
+func newNodeSubstitution(node hclsyntax.Node) substitution {
+	return substitution{Node: node}
+}
+
+func newObjectConsItemSubstitution(item *hclsyntax.ObjectConsItem) substitution {
+	return substitution{ObjectConsItem: item}
 }
 
 type matcher struct {
-	values map[string]nodeOrString
+	values map[string]substitution
 }
 
 func (m *matcher) node(pattern, node hclsyntax.Node) bool {
@@ -261,16 +266,43 @@ func (m *matcher) operation(op1, op2 *hclsyntax.Operation) bool {
 
 // ObjectConsItems comparisons
 
-func (m *matcher) objectConsItems(items1, items2 []hclsyntax.ObjectConsItem) bool {
-	if len(items1) != len(items2) {
-		return false
-	}
-	for i, e1 := range items1 {
-		if !(m.node(e1.KeyExpr, items2[i].KeyExpr) && m.node(e1.ValueExpr, items2[i].ValueExpr)) {
-			return false
+func wildNameFromObjectConsItem(in interface{}) (string, bool) {
+	switch node := in.(hclsyntax.ObjectConsItem).KeyExpr.(type) {
+	case *hclsyntax.ObjectConsKeyExpr:
+		name, ok := variableExpr(node.Wrapped)
+		if !ok {
+			return "", false
 		}
+		return fromWildName(name)
+	default:
+		return "", false
 	}
-	return true
+}
+
+func matchObjectConsItem(m *matcher, x, y interface{}) bool {
+	itemX, itemY := x.(hclsyntax.ObjectConsItem), y.(hclsyntax.ObjectConsItem)
+	return m.objectConsItem(itemX, itemY)
+}
+
+func (m *matcher) objectConsItems(items1, items2 []hclsyntax.ObjectConsItem) bool {
+	its1 := make([]interface{}, len(items1))
+	for i, n := range items1 {
+		its1[i] = n
+	}
+	its2 := make([]interface{}, len(items2))
+	for i, n := range items2 {
+		its2[i] = n
+	}
+
+	return m.iterableMatches(its1, its2, wildNameFromObjectConsItem, matchObjectConsItem)
+}
+
+func (m *matcher) objectConsItem(item1, item2 hclsyntax.ObjectConsItem) bool {
+	name, ok := variableExpr(item1.KeyExpr)
+	if ok && isWildAttr(name, item1.ValueExpr) {
+		return m.wildcardMatchObjectConsItem(name, item2)
+	}
+	return m.node(item1.KeyExpr, item2.KeyExpr) && m.node(item1.ValueExpr, item2.ValueExpr)
 }
 
 // String comparisons
@@ -345,14 +377,20 @@ func (m *matcher) wildcardMatchNode(name string, node hclsyntax.Node) bool {
 	}
 	prev, ok := m.values[name]
 	if !ok {
-		m.values[name] = newNodeOrStringForNode(node)
+		m.values[name] = newNodeSubstitution(node)
 		return true
 	}
-	if prev.String == nil {
+	switch {
+	case prev.String != nil:
+		nodeVar, ok := variableExpr(node)
+		return ok && nodeVar == *prev.String
+	case prev.Node != nil:
 		return m.node(prev.Node, node)
+	case prev.ObjectConsItem != nil:
+		return false
+	default:
+		panic("never reach here")
 	}
-	nodeVar, ok := variableExpr(node)
-	return ok && nodeVar == *prev.String
 }
 
 func (m *matcher) wildcardMatchString(name, target string) bool {
@@ -362,20 +400,43 @@ func (m *matcher) wildcardMatchString(name, target string) bool {
 	}
 	prev, ok := m.values[name]
 	if !ok {
-		m.values[name] = newNodeOrStringForString(target)
+		m.values[name] = newStringSubstitution(target)
 		return true
 	}
 
-	var prevName string
-	if prev.String != nil {
-		prevName = *prev.String
-	} else {
-		prevName, ok = variableExpr(prev.Node)
-		if !ok {
-			return false
-		}
+	switch {
+	case prev.String != nil:
+		return *prev.String == target
+	case prev.Node != nil:
+		prevName, ok := variableExpr(prev.Node)
+		return ok && prevName == target
+	case prev.ObjectConsItem != nil:
+		return false
+	default:
+		panic("never reach here")
 	}
-	return prevName == target
+}
+
+func (m *matcher) wildcardMatchObjectConsItem(name string, item hclsyntax.ObjectConsItem) bool {
+	if name == "_" {
+		// values are discarded, matches anything
+		return true
+	}
+	prev, ok := m.values[name]
+	if !ok {
+		m.values[name] = newObjectConsItemSubstitution(&item)
+		return true
+	}
+	switch {
+	case prev.String != nil:
+		return false
+	case prev.Node != nil:
+		return false
+	case prev.ObjectConsItem != nil:
+		return m.objectConsItem(*prev.ObjectConsItem, item)
+	default:
+		panic("never reach here")
+	}
 }
 
 // Two wildcard: expression wildcard ($) and attribute wildcard (@)
@@ -420,6 +481,9 @@ func fromWildName(name string) (ident string, any bool) {
 }
 
 func variableExpr(node hclsyntax.Node) (string, bool) {
+	if _, ok := node.(*hclsyntax.ObjectConsKeyExpr); ok {
+		node = node.(*hclsyntax.ObjectConsKeyExpr).Wrapped
+	}
 	vexp, ok := node.(*hclsyntax.ScopeTraversalExpr)
 	if !(ok && len(vexp.Traversal) == 1 && !vexp.Traversal.IsRelative()) {
 		return "", false

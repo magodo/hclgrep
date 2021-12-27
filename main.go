@@ -22,7 +22,7 @@ A pattern is a piece of HCL code which may include wildcards. It can be:
 
 There are two types of wildcards, depending on the scope it resides in:
 
-- Attribute wildcard ("@"): represents either an attribute or a block
+- Attribute wildcard ("@"): represents an attribute, a block or an object element
 - Expression wildcard ("$"): represents an expression or a place that a string is accepted (i.e. as a block type, block label)
 
 The wildcards are followed by a name. Each wildcard with the same name must match the same node/string, excluding "_". Example:
@@ -99,7 +99,7 @@ func compileExpr(expr string) (hclsyntax.Node, error) {
 func search(exprNode, node hclsyntax.Node) []hclsyntax.Node {
 	matches := []hclsyntax.Node{}
 	match := func(node hclsyntax.Node) {
-		m := matcher{values: map[string]nodeOrString{}}
+		m := matcher{values: map[string]substitution{}}
 		if m.node(exprNode, node) {
 			matches = append(matches, node)
 		}

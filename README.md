@@ -19,7 +19,7 @@ A pattern is a piece of HCL code which may include wildcards. It can be:
 
 There are two types of wildcards, depending on the scope it resides in:
 
-- Attribute wildcard ("@"): represents either an [attribute](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#attribute-definitions) or a [block](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#blocks)
+- Attribute wildcard ("@"): represents an [attribute](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#attribute-definitions), a [block](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#blocks), or an [object element](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#collection-values)
 - Expression wildcard ("$"): represents an [expression](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#expressions) or a place that a string is accepted (i.e. as a block type, block label)
 
 The wildcards are followed by a name. Each wildcard with the same name must match the same node/string, excluding "_". Example:

@@ -130,6 +130,45 @@ func TestGrep(t *testing.T) {
 		}`,
 			count: 1,
 		},
+		{
+			expr: `
+		{
+			@_
+			@_
+		}`,
+			src: `
+		{
+			a = b
+			c = d
+		}`,
+			count: 1,
+		},
+		{
+			expr: `
+		{
+			@*_
+		}`,
+			src: `
+		{
+			a = b
+			c = d
+		}`,
+			count: 1,
+		},
+		{
+			expr: `
+		{
+			@*_
+			e = f
+		}`,
+			src: `
+		{
+			a = b
+			c = d
+			e = f
+		}`,
+			count: 1,
+		},
 
 		// template expression
 		{`"a"`, `"a"`, 1},
