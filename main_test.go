@@ -29,6 +29,7 @@ func TestGrep(t *testing.T) {
 		// literal expression (wildcard)
 		{"x = $_", "x = 1", 1},
 		{"x = $_", "x = false", 1},
+		{"x = $*_", "x = false", 1},
 
 		// tuple cons expression
 		{"[1, 2]", "[1, 3]", 0},
@@ -65,6 +66,9 @@ func TestGrep(t *testing.T) {
 			src:   `[2, 1, 2]`,
 			count: 1,
 		},
+		{"[1, $*_]", "[1, 2, 3]", 1},
+		{"[$*_, 1]", "[1, 2, 3]", 0},
+		{"[$*_]", "[]", 1},
 
 		// object const expression
 		{"{a = b}", "{a = b}", 1},
@@ -177,6 +181,8 @@ EOF
 		{"$_($_)", "f1(arg)", 1},
 		{"f1($x, $x)", "f1(arg, arg)", 1},
 		{"f1($x, $x)", "f1(arg, arg2)", 0},
+		{"f1($*_)", "f1(arg, arg2)", 1},
+		{"f1($*_, arg1)", "f1(arg, arg2)", 0},
 
 		// for expression
 		{"[for i in list: i]", "[for i in list: i]", 1},
@@ -196,6 +202,7 @@ EOF
 		// index expression (wildcard)
 		{"x = $_", "x = foo[a]", 1},
 		{"foo[$x]", "foo[a]", 1},
+		{"foo[$*x]", "foo[a]", 1},
 
 		// splat expression
 		{"tuple.*.foo.bar[0]", "tuple.*.foo.bar[0]", 1},
@@ -206,6 +213,7 @@ EOF
 		// splat expression (wildcard)
 		{"x = $_", "x = tuple.*.foo.bar[0]", 1},
 		{"x = $_", "x = tuple[*].foo.bar[0]", 1},
+		{"x = $*_", "x = tuple[*].foo.bar[0]", 1},
 
 		// parenthese expression
 		{"(a)", "(a)", 1},
@@ -214,6 +222,7 @@ EOF
 		// parenthese expression (wildcard)
 		{"x = $_", "x = (a)", 1},
 		{"($_)", "(b)", 1},
+		{"($*_)", "(b)", 1},
 
 		// unary operation expression
 		{"-1", "-1", 1},
@@ -222,6 +231,7 @@ EOF
 		// unary operation expression (wildcard)
 		{"x = $_", "x = -1", 1},
 		{"x = $_", "x = !true", 1},
+		{"x = $*_", "x = !true", 1},
 
 		// binary operation expression
 		{"1+1", "1+1", 1},
@@ -229,6 +239,7 @@ EOF
 
 		// binary operation expression (wildcard)
 		{"x = $_", "x = 1+1", 1},
+		{"x = $*_", "x = 1+1", 1},
 
 		// conditional expression
 		{"cond? 0:1", "cond? 0:1", 1},
@@ -238,6 +249,7 @@ EOF
 		{"x = $_", "x = cond? 0:1", 1},
 		{"$_? 0:1", "cond? 0:1", 1},
 		{"cond? 0:$_", "cond? 0:1", 1},
+		{"cond? 0:$*_", "cond? 0:1", 1},
 
 		// scope traversal expression
 		{"a", "a", 1},
@@ -262,6 +274,7 @@ EOF
 		{"a.$x.$_.$x", "a.x.y.x", 1},
 		{"$_.$x.$_.$x", "a.x.y.x", 1},
 		{"a[$x]", "a[1]", 0}, // This is due to the key of the traverser index is a cty.Value, which is not either a string or an ast node.
+		{"a.$x.$*_.$x", "a.x.y.z", 0},
 
 		// relative traversal expression
 		{"sort()[0]", "sort()[0]", 1},
@@ -272,11 +285,267 @@ EOF
 		{"x = $_", "x = sort()[0]", 1},
 		{"$_()[0]", "sort()[0]", 1},
 		{"$_()[0]", "sort(arg)[0]", 0},
+		{"$*_()[0]", "sort(arg)[0]", 0},
 
 		// TODO: object cons key expression
 		// TODO: template join expression
 		// TODO: template wrap expression
 		// TODO: anonym symbol expression
+
+		// attribute
+		{"a = a", "a = a", 1},
+		{"a = a", "a = b", 0},
+
+		// attribute (wildcard)
+		{"$x = $x", "a = a", 1},
+		{"$x = $x", "a = b", 0},
+		{"$x = $*_", "a = b", 1},
+
+		// attributes
+		{
+			expr: `
+a = b
+c = d
+`,
+			src: `
+a = b
+c = d
+`,
+			count: 1,
+		},
+		{
+			expr: `
+a = b
+c = d
+`,
+			src: `
+a = b
+`,
+			count: 0,
+		},
+
+		// attributes (wildcard)
+		{
+			expr: `
+@x
+@y
+`,
+			src: `
+a = b
+c = d
+`,
+			count: 1,
+		},
+		{
+			expr: `
+a = $x
+c = $x
+`,
+			src: `
+a = b
+c = d
+`,
+			count: 0,
+		},
+		{
+			expr: `
+a = $x
+c = $x
+`,
+			src: `
+a = b
+c = b
+`,
+			count: 1,
+		},
+		{
+			expr: `
+a = $x
+c = $x
+`,
+			src: `
+a = b
+c = b
+`,
+			count: 1,
+		},
+		{
+			expr: `@*_`,
+			src: `
+a = b
+c = d
+`,
+			count: 2,
+		},
+		{
+			expr: `
+@*_
+e = f
+`,
+			src: `
+a = b
+c = d
+e = f
+`,
+			count: 1,
+		},
+
+		// block
+		{
+			expr: `blk {
+	a = b
+}`,
+			src: `blk {
+	a = b
+}`,
+			count: 1,
+		},
+		{
+			expr: `blk {
+	a = b
+	c = d
+}`,
+			src: `blk {
+	a = b
+}`,
+			count: 0,
+		},
+
+		// block (wildcard)
+		{
+			expr: `$_ {
+    a = b
+}`,
+			src: `blk {
+	a = b
+}`,
+			count: 1,
+		},
+		{
+			expr: `blk {
+	a = $x
+	c = $x
+}`,
+			src: `blk {
+	a = b
+	c = d
+}`,
+			count: 0,
+		},
+		{
+			expr: `blk {
+	a = $x
+	c = $x
+}`,
+			src: `blk {
+	a = b
+	c = b
+}`,
+			count: 1,
+		},
+		{
+			expr: `$a {
+	a = $x
+	b = ""
+}`,
+			src: `
+blk1 {
+	blk2 {
+		a = file("./a.txt")
+		b = ""
+	}
+}
+`,
+			count: 1,
+		},
+
+		// blocks
+		{
+			expr: `blk1 {
+	a = b
+}
+
+blk2 {
+    c = d
+}`,
+			src: `blk1 {
+	a = b
+}
+
+blk2 {
+    c = d
+}`,
+			count: 1,
+		},
+		{
+			expr: `blk1 {
+	a = b
+}
+
+blk2 {
+    c = d
+}`,
+			src: `blk1 {
+	a = b
+}`,
+			count: 0,
+		},
+
+		// blocks (wildcard)
+		{
+			expr: `
+$x {
+	a = b
+}
+
+$x {
+    c = d
+}`,
+			src: `
+blk1 {
+	a = b
+}
+
+blk2 {
+    c = d
+}`,
+			count: 0,
+		},
+		{
+			expr: `
+$x {
+	a = b
+}
+
+$x {
+    c = d
+}`,
+			src: `
+blk1 {
+	a = b
+}
+
+blk1 {
+    c = d
+}`,
+			count: 1,
+		},
+		{
+			expr: `
+@*_
+
+$x {
+    c = d
+}`,
+			src: `
+blk1 {}
+blk1 {}
+
+blk1 {
+    c = d
+}`,
+			count: 1,
+		},
 
 		// body
 		{
@@ -433,227 +702,27 @@ blk {
 `,
 			count: 0,
 		},
-
-		// attribute
-		{"a = a", "a = a", 1},
-		{"a = a", "a = b", 0},
-
-		// attribute (wildcard)
-		{"$x = $x", "a = a", 1},
-		{"$x = $x", "a = b", 0},
-
-		// attributes
 		{
 			expr: `
-a = b
-c = d
+@*_
+
+blk {
+ @x
+}
 `,
 			src: `
 a = b
-c = d
-`,
-			count: 1,
-		},
-		{
-			expr: `
-a = b
-c = d
-`,
-			src: `
-a = b
-`,
-			count: 0,
-		},
+blk1 {}
 
-		// attributes (wildcard)
-		{
-			expr: `
-@x
-@y
-`,
-			src: `
-a = b
-c = d
-`,
-			count: 1,
-		},
-		{
-			expr: `
-a = $x
-c = $x
-`,
-			src: `
-a = b
-c = d
-`,
-			count: 0,
-		},
-		{
-			expr: `
-a = $x
-c = $x
-`,
-			src: `
-a = b
-c = b
-`,
-			count: 1,
-		},
-		{
-			expr: `
-a = $x
-c = $x
-`,
-			src: `
-a = b
-c = b
-`,
-			count: 1,
-		},
-
-		// block
-		{
-			expr: `blk {
-	a = b
-}`,
-			src: `blk {
-	a = b
-}`,
-			count: 1,
-		},
-		{
-			expr: `blk {
-	a = b
-	c = d
-}`,
-			src: `blk {
-	a = b
-}`,
-			count: 0,
-		},
-
-		// block (wildcard)
-		{
-			expr: `$_ {
-    a = b
-}`,
-			src: `blk {
-	a = b
-}`,
-			count: 1,
-		},
-		{
-			expr: `blk {
-	a = $x
-	c = $x
-}`,
-			src: `blk {
-	a = b
-	c = d
-}`,
-			count: 0,
-		},
-		{
-			expr: `blk {
-	a = $x
-	c = $x
-}`,
-			src: `blk {
-	a = b
-	c = b
-}`,
-			count: 1,
-		},
-		{
-			expr: `$a {
-	a = $x
-	b = ""
-}`,
-			src: `
-blk1 {
-	blk2 {
-		a = file("./a.txt")
-		b = ""
-	}
+blk {
+ blk1 {}
 }
 `,
-			count: 1,
-		},
-
-		// blocks
-		{
-			expr: `blk1 {
-	a = b
-}
-
-blk2 {
-    c = d
-}`,
-			src: `blk1 {
-	a = b
-}
-
-blk2 {
-    c = d
-}`,
-			count: 1,
-		},
-		{
-			expr: `blk1 {
-	a = b
-}
-
-blk2 {
-    c = d
-}`,
-			src: `blk1 {
-	a = b
-}`,
-			count: 0,
-		},
-
-		// blocks (wildcard)
-		{
-			expr: `
-$x {
-	a = b
-}
-
-$x {
-    c = d
-}`,
-			src: `
-blk1 {
-	a = b
-}
-
-blk2 {
-    c = d
-}`,
-			count: 0,
-		},
-		{
-			expr: `
-$x {
-	a = b
-}
-
-$x {
-    c = d
-}`,
-			src: `
-blk1 {
-	a = b
-}
-
-blk1 {
-    c = d
-}`,
 			count: 1,
 		},
 
 		// expr tokenize errors
-		{"$", "", tokErr(":1,2-2: $ must be followed by ident, got TokenEOF")},
+		{"$", "", tokErr(":1,2-2: wildcard must be followed by ident, got TokenEOF")},
 
 		// expr parse errors
 		{"a = ", "", parseErr(":1,3-3: Missing expression; Expected the start of an expression, but found the end of the file.")},

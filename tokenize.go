@@ -16,11 +16,13 @@ type exprTokenType hclsyntax.TokenType
 const (
 	_ exprTokenType = -iota
 	TokenWildcard
+	TokenWildcardAny
 	TokenAttrWildcard
+	TokenAttrWildcardAny
 )
 
 type fullToken struct {
-	Type  exprTokenType
+	Type  hclsyntax.TokenType
 	Bytes []byte
 	Range hcl.Range
 }
@@ -48,48 +50,73 @@ func tokenize(src string) (fullTokens, error) {
 		return nil, errors.New(diags.Error())
 	}
 
+	var start int
+	for start = 0; start < len(tokens) && tokens[start].Type == hclsyntax.TokenNewline; start++ {
+	}
+
+	var remaining []fullToken
+	for _, tok := range tokens[start:] {
+		remaining = append(remaining, fullToken{tok.Type, tok.Bytes, tok.Range})
+		if tok.Type == hclsyntax.TokenEOF {
+			break
+		}
+	}
+	next := func() fullToken {
+		t := remaining[0]
+		remaining = remaining[1:]
+		return t
+	}
+
 	var (
 		toks              []fullToken
 		wildcardTokenType = hclsyntax.TokenNil
 	)
-	var start int
-	for start = 0; start < len(tokens) && tokens[start].Type == hclsyntax.TokenNewline; start++ {
-	}
-	for _, tok := range tokens[start:] {
-		if wildcardTokenType != hclsyntax.TokenNil {
-			if tok.Type != hclsyntax.TokenIdent {
-				return nil, fmt.Errorf("%v: %s must be followed by ident, got %v",
-					tok.Range, wildcardLit, tok.Type)
-			}
-			toks = append(toks, fullToken{
-				Type:  exprTokenType(wildcardTokenType),
-				Range: tok.Range,
-				Bytes: tok.Bytes,
-			})
-
-			wildcardTokenType = hclsyntax.TokenNil
-			continue
-		}
-		if tok.Type == hclsyntax.TokenEOF {
+	t := next()
+	for {
+		if t.Type == hclsyntax.TokenEOF {
 			break
 		}
-		if tok.Type == hclsyntax.TokenInvalid {
-			switch string(tok.Bytes) {
-			case wildcardLit:
-				wildcardTokenType = hclsyntax.TokenType(TokenWildcard)
-			case attrWildcardLit:
-				wildcardTokenType = hclsyntax.TokenType(TokenAttrWildcard)
-			default:
-				panic(fmt.Sprintf("unexpected invalid token %s", string(tok.Bytes)))
-			}
-		} else {
+		if !(t.Type == hclsyntax.TokenInvalid &&
+			(string(t.Bytes) == wildcardLit || string(t.Bytes) == attrWildcardLit)) {
+			// regular HCL
 			toks = append(toks, fullToken{
-				Type:  exprTokenType(tok.Type),
-				Range: tok.Range,
-				Bytes: tok.Bytes,
+				Type:  t.Type,
+				Range: t.Range,
+				Bytes: t.Bytes,
 			})
+			t = next()
+			continue
 		}
+		switch string(t.Bytes) {
+		case wildcardLit:
+			wildcardTokenType = hclsyntax.TokenType(TokenWildcard)
+		case attrWildcardLit:
+			wildcardTokenType = hclsyntax.TokenType(TokenAttrWildcard)
+		default:
+			panic("never reach here")
+		}
+		t = next()
+		if string(t.Bytes) == string(hclsyntax.TokenStar) {
+			switch wildcardTokenType {
+			case hclsyntax.TokenType(TokenWildcard):
+				wildcardTokenType = hclsyntax.TokenType(TokenWildcardAny)
+			case hclsyntax.TokenType(TokenAttrWildcard):
+				wildcardTokenType = hclsyntax.TokenType(TokenAttrWildcardAny)
+			}
+			t = next()
+		}
+		if t.Type != hclsyntax.TokenIdent {
+			return nil, fmt.Errorf("%v: wildcard must be followed by ident, got %v",
+				t.Range, t.Type)
+		}
+		toks = append(toks, fullToken{
+			Type:  wildcardTokenType,
+			Bytes: t.Bytes,
+			Range: t.Range,
+		})
+		t = next()
 	}
+
 	return toks, nil
 }
 
@@ -98,10 +125,14 @@ func (toks fullTokens) Bytes() []byte {
 	for i, t := range toks {
 		var s string
 		switch {
-		case t.Type == TokenWildcard:
-			s = wildName(string(t.Bytes))
-		case t.Type == TokenAttrWildcard:
-			s = wildAttr(string(t.Bytes))
+		case t.Type == hclsyntax.TokenType(TokenWildcard):
+			s = wildName(string(t.Bytes), false)
+		case t.Type == hclsyntax.TokenType(TokenWildcardAny):
+			s = wildName(string(t.Bytes), true)
+		case t.Type == hclsyntax.TokenType(TokenAttrWildcard):
+			s = wildAttr(string(t.Bytes), false)
+		case t.Type == hclsyntax.TokenType(TokenAttrWildcardAny):
+			s = wildAttr(string(t.Bytes), true)
 		default:
 			s = string(t.Bytes)
 		}
@@ -109,7 +140,11 @@ func (toks fullTokens) Bytes() []byte {
 
 		if i+1 < len(toks) {
 			peekTok := toks[i+1]
-			if peekTok.Type == exprTokenType(hclsyntax.TokenIdent) || peekTok.Type == TokenWildcard || peekTok.Type == TokenAttrWildcard {
+			if peekTok.Type == hclsyntax.TokenIdent ||
+				peekTok.Type == hclsyntax.TokenType(TokenWildcard) ||
+				peekTok.Type == hclsyntax.TokenType(TokenAttrWildcard) ||
+				peekTok.Type == hclsyntax.TokenType(TokenWildcardAny) ||
+				peekTok.Type == hclsyntax.TokenType(TokenAttrWildcardAny) {
 				buf.WriteByte(' ') // for e.g. consecutive idents (e.g. ForExpr)
 			}
 		}
