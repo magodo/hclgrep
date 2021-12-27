@@ -2,7 +2,7 @@
 
 Search for HCL(v2) using syntax tree.
 
-The idea is heavily inspired by github.com/mvdan/gogrep.
+The idea is heavily inspired by https://github.com/mvdan/gogrep.
 
 ## Install
 
