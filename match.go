@@ -130,7 +130,64 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 	}
 }
 
+type matchFunc func(*matcher, interface{}, interface{}) bool
+type wildNameFunc func(interface{}) (string, bool)
+
+// iterableMatches matches two lists. It uses a common algorithm to match
+// wildcard patterns with any number of elements without recursion.
+func (m *matcher) iterableMatches(ns1, ns2 []interface{}, nf wildNameFunc, mf matchFunc) bool {
+	i1, i2 := 0, 0
+	next1, next2 := 0, 0
+	for i1 < len(ns1) || i2 < len(ns2) {
+		if i1 < len(ns1) {
+			n1 := ns1[i1]
+			if _, any := nf(n1); any {
+				// try to match zero or more at i2,
+				// restarting at i2+1 if it fails
+				next1 = i1
+				next2 = i2 + 1
+				i1++
+				continue
+			}
+			if i2 < len(ns2) && mf(m, n1, ns2[i2]) {
+				// ordinary match
+				i1++
+				i2++
+				continue
+			}
+		}
+		// mismatch, try to restart
+		if 0 < next2 && next2 <= len(ns2) {
+			i1 = next1
+			i2 = next2
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // Node comparisons
+
+func wildNameFromNode(in interface{}) (string, bool) {
+	switch node := in.(type) {
+	case *hclsyntax.ScopeTraversalExpr:
+		name, ok := variableExpr(node)
+		if !ok {
+			return "", false
+		}
+		return fromWildName(name)
+	case *hclsyntax.Attribute:
+		return fromWildName(node.Name)
+	default:
+		return "", false
+	}
+}
+
+func matchNode(m *matcher, x, y interface{}) bool {
+	nx, ny := x.(hclsyntax.Node), y.(hclsyntax.Node)
+	return m.node(nx, ny)
+}
 
 func (m *matcher) attribute(x *hclsyntax.Attribute, y hclsyntax.Node) bool {
 	if x == nil || y == nil {
@@ -193,62 +250,6 @@ func (m *matcher) exprs(exprs1, exprs2 []hclsyntax.Expression) bool {
 	return m.iterableMatches(ns1, ns2, wildNameFromNode, matchNode)
 }
 
-type wildNameFunc func(interface{}) (string, bool)
-
-func wildNameFromNode(in interface{}) (string, bool) {
-	return fromWildNode(in.(hclsyntax.Node))
-}
-
-func wildNameFromString(in interface{}) (string, bool) {
-	return fromWildName(in.(string))
-}
-
-type matchFunc func(*matcher, interface{}, interface{}) bool
-
-func matchNode(m *matcher, x, y interface{}) bool {
-	nx, ny := x.(hclsyntax.Node), y.(hclsyntax.Node)
-	return m.node(nx, ny)
-}
-
-func matchString(m *matcher, x, y interface{}) bool {
-	sx, sy := x.(string), y.(string)
-	return m.potentialWildcardIdentEqual(sx, sy)
-}
-
-// nodes matches two lists of nodes. It uses a common algorithm to match
-// wildcard patterns with any number of nodes without recursion.
-func (m *matcher) iterableMatches(ns1, ns2 []interface{}, nf wildNameFunc, mf matchFunc) bool {
-	i1, i2 := 0, 0
-	next1, next2 := 0, 0
-	for i1 < len(ns1) || i2 < len(ns2) {
-		if i1 < len(ns1) {
-			n1 := ns1[i1]
-			if _, any := nf(n1); any {
-				// try to match zero or more at i2,
-				// restarting at i2+1 if it fails
-				next1 = i1
-				next2 = i2 + 1
-				i1++
-				continue
-			}
-			if i2 < len(ns2) && mf(m, n1, ns2[i2]) {
-				// ordinary match
-				i1++
-				i2++
-				continue
-			}
-		}
-		// mismatch, try to restart
-		if 0 < next2 && next2 <= len(ns2) {
-			i1 = next1
-			i2 = next2
-			continue
-		}
-		return false
-	}
-	return true
-}
-
 // Operation comparisons
 
 func (m *matcher) operation(op1, op2 *hclsyntax.Operation) bool {
@@ -273,6 +274,15 @@ func (m *matcher) objectConsItems(items1, items2 []hclsyntax.ObjectConsItem) boo
 }
 
 // String comparisons
+
+func wildNameFromString(in interface{}) (string, bool) {
+	return fromWildName(in.(string))
+}
+
+func matchString(m *matcher, x, y interface{}) bool {
+	sx, sy := x.(string), y.(string)
+	return m.potentialWildcardIdentEqual(sx, sy)
+}
 
 func (m *matcher) potentialWildcardIdentsEqual(identX, identY []string) bool {
 	ss1 := make([]interface{}, len(identX))
@@ -407,21 +417,6 @@ func isWildAttr(key string, value hclsyntax.Expression) bool {
 func fromWildName(name string) (ident string, any bool) {
 	ident = strings.TrimPrefix(strings.Split(name, "-")[0], wildPrefix)
 	return strings.TrimPrefix(ident, wildExtraAny), strings.HasPrefix(ident, wildExtraAny)
-}
-
-func fromWildNode(node hclsyntax.Node) (ident string, any bool) {
-	switch node := node.(type) {
-	case *hclsyntax.ScopeTraversalExpr:
-		name, ok := variableExpr(node)
-		if !ok {
-			return "", false
-		}
-		return fromWildName(name)
-	case *hclsyntax.Attribute:
-		return fromWildName(node.Name)
-	default:
-		return "", false
-	}
 }
 
 func variableExpr(node hclsyntax.Node) (string, bool) {
