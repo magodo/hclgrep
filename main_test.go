@@ -458,6 +458,24 @@ blk1 {
 `,
 			count: 1,
 		},
+		{
+			expr: `$*_ {
+	a = b
+}`,
+			src: `type label1 label2 {
+	a = b
+}`,
+			count: 0,
+		},
+		{
+			expr: `type $*_ {
+	a = b
+}`,
+			src: `type label1 label2 {
+	a = b
+}`,
+			count: 1,
+		},
 
 		// blocks
 		{
