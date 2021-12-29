@@ -45,4 +45,3 @@ $ hclgrep 'var.$_[count.index]' main.tf         # Grep potential mis-used "count
 
 - The **any** expression wildcard (`$*`) doesn't work inside a traversal.
 - The expression wildcard doesn't work in place of traverse index. E.g. `a[$_]` doesn't match `a[1]`, as the index is a `cty.Value`.
-- The expression wildcard doesn't work in place of unary/binary expression, as it compares by implementation and type (`cty.Type`).
