@@ -14,6 +14,7 @@ type substitution struct {
 	String         *string
 	Node           hclsyntax.Node
 	ObjectConsItem *hclsyntax.ObjectConsItem
+	Traverser      *hcl.Traverser
 }
 
 func newStringSubstitution(s string) substitution {
@@ -26,6 +27,10 @@ func newNodeSubstitution(node hclsyntax.Node) substitution {
 
 func newObjectConsItemSubstitution(item *hclsyntax.ObjectConsItem) substitution {
 	return substitution{ObjectConsItem: item}
+}
+
+func newTraverserSubstitution(trav hcl.Traverser) substitution {
+	return substitution{Traverser: &trav}
 }
 
 type matcher struct {
@@ -74,6 +79,29 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 			m.potentialWildcardIdentEqual(x.ValVar, y.ValVar) &&
 			m.node(x.CollExpr, y.CollExpr) && m.node(x.KeyExpr, y.KeyExpr) && m.node(x.ValExpr, y.ValExpr) && m.node(x.CondExpr, y.CondExpr) && x.Group == y.Group
 	case *hclsyntax.IndexExpr:
+		// In case the index key of x is a wildcard, try to also match "y" even if it is not an IndexExpr:
+		// 1. The collection of x is a ScopeTraversalExpr, then y should be matched as either a ScopeTraversalExpr or an IndexExpr: e.g. x.y.z[$_] matches x.y.z[1] and x.y.z[a]
+		// 2. Otherwise, y should be matched as a RelativeTraversalExpr: e.g. [1,2,3][$_] matches [1,2,3][0]
+		xname, ok := variableExpr(x.Key)
+		if ok && isWildName(xname) {
+			switch y := node.(type) {
+			case *hclsyntax.ScopeTraversalExpr:
+				l := len(y.Traversal)
+				ySourceTraversal := &hclsyntax.ScopeTraversalExpr{
+					Traversal: make(hcl.Traversal, l-1),
+				}
+				copy(ySourceTraversal.Traversal, y.Traversal[:l-1])
+				return m.node(x.Collection, ySourceTraversal) && m.wildcardMatchTraverse(xname, y.Traversal[l-1])
+			case *hclsyntax.IndexExpr:
+				return m.node(x.Collection, y.Collection) && m.wildcardMatchNode(xname, y.Key)
+			case *hclsyntax.RelativeTraversalExpr:
+				return m.node(x.Collection, y.Source) && len(y.Traversal) == 1 && m.wildcardMatchTraverse(xname, y.Traversal[0])
+			default:
+				return false
+			}
+		}
+
+		// Otherwise, regular match against the same type
 		y, ok := node.(*hclsyntax.IndexExpr)
 		return ok && m.node(x.Collection, y.Collection) && m.node(x.Key, y.Key)
 	case *hclsyntax.SplatExpr:
@@ -412,6 +440,15 @@ func (m *matcher) wildcardMatchString(name, target string) bool {
 		return ok && prevName == target
 	case prev.ObjectConsItem != nil:
 		return false
+	case prev.Traverser != nil:
+		switch trav := (*prev.Traverser).(type) {
+		case hcl.TraverseRoot:
+			return trav.Name == target
+		case hcl.TraverseAttr:
+			return trav.Name == target
+		default:
+			return false
+		}
 	default:
 		panic("never reach here")
 	}
@@ -434,6 +471,39 @@ func (m *matcher) wildcardMatchObjectConsItem(name string, item hclsyntax.Object
 		return false
 	case prev.ObjectConsItem != nil:
 		return m.objectConsItem(*prev.ObjectConsItem, item)
+	case prev.Traverser != nil:
+		return false
+	default:
+		panic("never reach here")
+	}
+}
+
+func (m *matcher) wildcardMatchTraverse(name string, trav hcl.Traverser) bool {
+	if name == "_" {
+		// values are discarded, matches anything
+		return true
+	}
+	prev, ok := m.values[name]
+	if !ok {
+		m.values[name] = newTraverserSubstitution(trav)
+		return true
+	}
+	switch {
+	case prev.String != nil:
+		switch trav := trav.(type) {
+		case hcl.TraverseRoot:
+			return trav.Name == *prev.String
+		case hcl.TraverseAttr:
+			return trav.Name == *prev.String
+		default:
+			return false
+		}
+	case prev.Node != nil:
+		return false
+	case prev.ObjectConsItem != nil:
+		return false
+	case prev.Traverser != nil:
+		return m.traverser(trav, *prev.Traverser)
 	default:
 		panic("never reach here")
 	}

@@ -242,6 +242,13 @@ EOF
 		{"x = $_", "x = foo[a]", 1},
 		{"foo[$x]", "foo[a]", 1},
 		{"foo[$*x]", "foo[a]", 1},
+		{"a[$x]", "a[1]", 1},
+		{"foo()[$x]", "foo()[1]", 1},
+		{"[1,2,3][$x]", "[1,2,3][1]", 1},
+		{`"abc"[$x]`, `"abc"[0]`, 1},
+		{`x[0][$x]`, `x[0][0]`, 1},
+		{`x[$x][$x]`, `x[0][0]`, 1},
+		{`x[$x][$x]`, `x[0][1]`, 0},
 
 		// splat expression
 		{"tuple.*.foo.bar[0]", "tuple.*.foo.bar[0]", 1},
@@ -312,7 +319,6 @@ EOF
 		{"a.$x.$_.$x", "a.x.y.z", 0},
 		{"a.$x.$_.$x", "a.x.y.x", 1},
 		{"$_.$x.$_.$x", "a.x.y.x", 1},
-		{"a[$x]", "a[1]", 0}, // This is due to the key of the traverser index is a cty.Value, which is not either a string or an ast node.
 		{"a.$x.$*_.$x", "a.x.y.z", 0},
 
 		// relative traversal expression
