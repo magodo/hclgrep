@@ -79,9 +79,7 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 			m.potentialWildcardIdentEqual(x.ValVar, y.ValVar) &&
 			m.node(x.CollExpr, y.CollExpr) && m.node(x.KeyExpr, y.KeyExpr) && m.node(x.ValExpr, y.ValExpr) && m.node(x.CondExpr, y.CondExpr) && x.Group == y.Group
 	case *hclsyntax.IndexExpr:
-		// In case the index key of x is a wildcard, try to also match "y" even if it is not an IndexExpr:
-		// 1. The collection of x is a ScopeTraversalExpr, then y should be matched as either a ScopeTraversalExpr or an IndexExpr: e.g. x.y.z[$_] matches x.y.z[1] and x.y.z[a]
-		// 2. Otherwise, y should be matched as a RelativeTraversalExpr: e.g. [1,2,3][$_] matches [1,2,3][0]
+		// In case the index key of x is a wildcard, try to also match "y" even if it is not an IndexExpr
 		xname, ok := variableExpr(x.Key)
 		if ok && isWildName(xname) {
 			switch y := node.(type) {
