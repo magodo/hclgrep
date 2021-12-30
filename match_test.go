@@ -790,6 +790,11 @@ blk {
 
 		// expr parse errors
 		{"a = ", "", parseErr(":1,3-3: Missing expression; Expected the start of an expression, but found the end of the file.")},
+
+		// empty source
+		{"", "", 1},
+		{"\t", "", 1},
+		{"a", "", 0},
 	}
 
 	for i, tc := range tests {
