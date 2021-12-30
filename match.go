@@ -10,6 +10,21 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
+func matches(exprNode, node hclsyntax.Node) []hclsyntax.Node {
+	matches := []hclsyntax.Node{}
+	match := func(node hclsyntax.Node) {
+		m := matcher{values: map[string]substitution{}}
+		if m.node(exprNode, node) {
+			matches = append(matches, node)
+		}
+	}
+	hclsyntax.VisitAll(node, func(node hclsyntax.Node) hcl.Diagnostics {
+		match(node)
+		return nil
+	})
+	return matches
+}
+
 type substitution struct {
 	String         *string
 	Node           hclsyntax.Node

@@ -17,7 +17,7 @@ func parseErr(msg string) wantErr {
 	return wantErr("cannot parse expr: " + msg)
 }
 
-func TestGrep(t *testing.T) {
+func TestMatch(t *testing.T) {
 	tests := []struct {
 		expr, src string
 		count     interface{}
@@ -794,12 +794,12 @@ blk {
 
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("%02d", i), func(t *testing.T) {
-			grepTest(t, tc.expr, tc.src, tc.count)
+			matchTest(t, tc.expr, tc.src, tc.count)
 		})
 	}
 }
 
-func grepStrs(expr, src string) ([]hclsyntax.Node, error) {
+func matchStrs(expr, src string) ([]hclsyntax.Node, error) {
 	exprNode, err := compileExpr(expr)
 	if err != nil {
 		return nil, err
@@ -808,14 +808,14 @@ func grepStrs(expr, src string) ([]hclsyntax.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return search(exprNode, srcNode), nil
+	return matches(exprNode, srcNode), nil
 }
 
-func grepTest(t *testing.T, expr, src string, anyWant interface{}) {
+func matchTest(t *testing.T, expr, src string, anyWant interface{}) {
 	terr := func(format string, a ...interface{}) {
 		t.Errorf("%s | %s: %s", expr, src, fmt.Sprintf(format, a...))
 	}
-	matches, err := grepStrs(expr, src)
+	matches, err := matchStrs(expr, src)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {

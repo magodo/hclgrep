@@ -69,9 +69,9 @@ func grepArgs(expr string, files []string) error {
 		}
 		srcNode := bodyContent(f.Body.(*hclsyntax.Body))
 
-		matches := search(exprNode, srcNode)
+		nodes := matches(exprNode, srcNode)
 		wd, _ := os.Getwd()
-		for _, n := range matches {
+		for _, n := range nodes {
 			rng := n.Range()
 			if strings.HasPrefix(rng.Filename, wd) {
 				rng.Filename = rng.Filename[len(wd)+1:]
@@ -94,19 +94,4 @@ func compileExpr(expr string) (hclsyntax.Node, error) {
 		return nil, fmt.Errorf("cannot parse expr: %v", diags.Error())
 	}
 	return node, nil
-}
-
-func search(exprNode, node hclsyntax.Node) []hclsyntax.Node {
-	matches := []hclsyntax.Node{}
-	match := func(node hclsyntax.Node) {
-		m := matcher{values: map[string]substitution{}}
-		if m.node(exprNode, node) {
-			matches = append(matches, node)
-		}
-	}
-	hclsyntax.VisitAll(node, func(node hclsyntax.Node) hcl.Diagnostics {
-		match(node)
-		return nil
-	})
-	return matches
 }
