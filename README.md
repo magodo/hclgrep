@@ -28,13 +28,15 @@ The wildcards are followed by a name. Each wildcard with the same name must matc
 
     $x.$_ = $x # assignment of self to a field in self
 
-If "*" is before the name, it will match any number of nodes. Example:
+If "*" is before the name, it will match **any** number of nodes. Example:
 
     [$*_] # any number of elements in a tuple
 
     resource foo "name" {
         @*_  # any number of attributes/blocks inside the resource block body
     }
+
+Note that currently **any** wildcard doesn't remeber the matched wildcard name.
 
 ## Example
 
