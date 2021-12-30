@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -43,8 +44,8 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 	args := flag.Args()
-	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "hclgrep: need at least two args, try 'hclgrep -h' for more information")
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "hclgrep: need at least one arg, try 'hclgrep -h' for more information")
 		os.Exit(1)
 	}
 	if err := grepArgs(args[0], args[1:]); err != nil {
@@ -58,26 +59,41 @@ func grepArgs(expr string, files []string) error {
 	if err != nil {
 		return err
 	}
+	if len(files) == 0 {
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("reading from stdin: %w", err)
+		}
+		return grepOneSource(exprNode, "stdin", b)
+	}
+
 	for _, file := range files {
 		b, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("reading file %s: %w", file, err)
 		}
-		f, diags := hclsyntax.ParseConfig(b, file, hcl.InitialPos)
-		if diags.HasErrors() {
-			return fmt.Errorf("cannot parse source: %s", diags.Error())
+		if err := grepOneSource(exprNode, file, b); err != nil {
+			return err
 		}
-		srcNode := bodyContent(f.Body.(*hclsyntax.Body))
+	}
+	return nil
+}
 
-		nodes := matches(exprNode, srcNode)
-		wd, _ := os.Getwd()
-		for _, n := range nodes {
-			rng := n.Range()
-			if strings.HasPrefix(rng.Filename, wd) {
-				rng.Filename = rng.Filename[len(wd)+1:]
-			}
-			fmt.Printf("%s:\n%s\n", rng, string(rng.SliceBytes(b)))
+func grepOneSource(exprNode hclsyntax.Node, fileName string, b []byte) error {
+	f, diags := hclsyntax.ParseConfig(b, fileName, hcl.InitialPos)
+	if diags.HasErrors() {
+		return fmt.Errorf("cannot parse source: %s", diags.Error())
+	}
+	srcNode := bodyContent(f.Body.(*hclsyntax.Body))
+
+	nodes := matches(exprNode, srcNode)
+	wd, _ := os.Getwd()
+	for _, n := range nodes {
+		rng := n.Range()
+		if strings.HasPrefix(rng.Filename, wd) {
+			rng.Filename = rng.Filename[len(wd)+1:]
 		}
+		fmt.Printf("%s:\n%s\n", rng, string(rng.SliceBytes(b)))
 	}
 	return nil
 }
