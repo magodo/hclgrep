@@ -30,6 +30,7 @@ func TestMatch(t *testing.T) {
 		{"x = $_", "x = 1", 1},
 		{"x = $_", "x = false", 1},
 		{"x = $*_", "x = false", 1},
+		{"x = $(x)", "x = false", 1},
 
 		// tuple cons expression
 		{"[1, 2]", "[1, 3]", 0},
@@ -41,6 +42,7 @@ func TestMatch(t *testing.T) {
 		{"[1, $_, 3]", "[1, 3]", 0},
 		{"[1, $x, $x]", "[1, 2, 2]", 1},
 		{"[1, $x, $x]", "[1, 2, 3]", 0},
+		{"[1, $(x), $(x)]", "[1, 2, 2]", 1},
 		{
 			expr: `
 [
@@ -218,6 +220,7 @@ EOF
 		{"$_()", "f1()", 1},
 		{"$_()", "f1(arg)", 0},
 		{"f1($_)", "f1(arg)", 1},
+		{"f1($(_))", "f1(arg)", 1},
 		{"$_($_)", "f1(arg)", 1},
 		{"f1($x, $x)", "f1(arg, arg)", 1},
 		{"f1($x, $x)", "f1(arg, arg2)", 0},
@@ -269,6 +272,7 @@ EOF
 		// parenthese expression (wildcard)
 		{"x = $_", "x = (a)", 1},
 		{"($_)", "(b)", 1},
+		{"($(_))", "(b)", 1},
 		{"($*_)", "(b)", 1},
 
 		// unary operation expression
@@ -330,6 +334,7 @@ EOF
 		// relative traversal expression (wildcard)
 		{"x = $_", "x = sort()[0]", 1},
 		{"$_()[0]", "sort()[0]", 1},
+		{"$(_)()[0]", "sort()[0]", 1},
 		{"$_()[0]", "sort(arg)[0]", 0},
 		{"$*_()[0]", "sort(arg)[0]", 0},
 
@@ -518,6 +523,15 @@ blk1 {
 	a = b
 }`,
 			src: `type label1 label2 {
+	a = b
+}`,
+			count: 1,
+		},
+		{
+			expr: `type  {
+	@(x)
+}`,
+			src: `type {
 	a = b
 }`,
 			count: 1,
@@ -795,6 +809,9 @@ blk {
 		{"", "", 1},
 		{"\t", "", 1},
 		{"a", "", 0},
+
+		// no closing parenthese
+		{"$(x", "1", tokErr(":1,4-4: expected )")},
 	}
 
 	for i, tc := range tests {
