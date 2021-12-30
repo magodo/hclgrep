@@ -164,14 +164,58 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 type matchFunc func(*matcher, interface{}, interface{}) bool
 type wildNameFunc func(interface{}) (string, bool)
 
+type iterable interface {
+	at(i int) interface{}
+	len() int
+}
+
+type stringIterable []string
+
+func (it stringIterable) at(i int) interface{} {
+	return it[i]
+}
+func (it stringIterable) len() int {
+	return len(it)
+}
+
+type nodeIterable []hclsyntax.Node
+
+func (it nodeIterable) at(i int) interface{} {
+	return it[i]
+}
+
+func (it nodeIterable) len() int {
+	return len(it)
+}
+
+type exprIterable []hclsyntax.Expression
+
+func (it exprIterable) at(i int) interface{} {
+	return it[i]
+}
+
+func (it exprIterable) len() int {
+	return len(it)
+}
+
+type objectConsItemIterable []hclsyntax.ObjectConsItem
+
+func (it objectConsItemIterable) at(i int) interface{} {
+	return it[i]
+}
+
+func (it objectConsItemIterable) len() int {
+	return len(it)
+}
+
 // iterableMatches matches two lists. It uses a common algorithm to match
 // wildcard patterns with any number of elements without recursion.
-func (m *matcher) iterableMatches(ns1, ns2 []interface{}, nf wildNameFunc, mf matchFunc) bool {
+func (m *matcher) iterableMatches(ns1, ns2 iterable, nf wildNameFunc, mf matchFunc) bool {
 	i1, i2 := 0, 0
 	next1, next2 := 0, 0
-	for i1 < len(ns1) || i2 < len(ns2) {
-		if i1 < len(ns1) {
-			n1 := ns1[i1]
+	for i1 < ns1.len() || i2 < ns2.len() {
+		if i1 < ns1.len() {
+			n1 := ns1.at(i1)
 			if _, any := nf(n1); any {
 				// try to match zero or more at i2,
 				// restarting at i2+1 if it fails
@@ -180,7 +224,7 @@ func (m *matcher) iterableMatches(ns1, ns2 []interface{}, nf wildNameFunc, mf ma
 				i1++
 				continue
 			}
-			if i2 < len(ns2) && mf(m, n1, ns2[i2]) {
+			if i2 < ns2.len() && mf(m, n1, ns2.at(i2)) {
 				// ordinary match
 				i1++
 				i2++
@@ -188,7 +232,7 @@ func (m *matcher) iterableMatches(ns1, ns2 []interface{}, nf wildNameFunc, mf ma
 			}
 		}
 		// mismatch, try to restart
-		if 0 < next2 && next2 <= len(ns2) {
+		if 0 < next2 && next2 <= ns2.len() {
 			i1 = next1
 			i2 = next2
 			continue
@@ -257,28 +301,11 @@ func (m *matcher) body(x, y *hclsyntax.Body) bool {
 	// Sort the attributes/blocks to reserve the order in source
 	bodyEltsX := sortBody(x)
 	bodyEltsY := sortBody(y)
-
-	ns1 := make([]interface{}, len(bodyEltsX))
-	for i, n := range bodyEltsX {
-		ns1[i] = n
-	}
-	ns2 := make([]interface{}, len(bodyEltsY))
-	for i, n := range bodyEltsY {
-		ns2[i] = n
-	}
-	return m.iterableMatches(ns1, ns2, wildNameFromNode, matchNode)
+	return m.iterableMatches(nodeIterable(bodyEltsX), nodeIterable(bodyEltsY), wildNameFromNode, matchNode)
 }
 
 func (m *matcher) exprs(exprs1, exprs2 []hclsyntax.Expression) bool {
-	ns1 := make([]interface{}, len(exprs1))
-	for i, n := range exprs1 {
-		ns1[i] = n
-	}
-	ns2 := make([]interface{}, len(exprs2))
-	for i, n := range exprs2 {
-		ns2[i] = n
-	}
-	return m.iterableMatches(ns1, ns2, wildNameFromNode, matchNode)
+	return m.iterableMatches(exprIterable(exprs1), exprIterable(exprs2), wildNameFromNode, matchNode)
 }
 
 // Operation comparisons
@@ -311,16 +338,7 @@ func matchObjectConsItem(m *matcher, x, y interface{}) bool {
 }
 
 func (m *matcher) objectConsItems(items1, items2 []hclsyntax.ObjectConsItem) bool {
-	its1 := make([]interface{}, len(items1))
-	for i, n := range items1 {
-		its1[i] = n
-	}
-	its2 := make([]interface{}, len(items2))
-	for i, n := range items2 {
-		its2[i] = n
-	}
-
-	return m.iterableMatches(its1, its2, wildNameFromObjectConsItem, matchObjectConsItem)
+	return m.iterableMatches(objectConsItemIterable(items1), objectConsItemIterable(items2), wildNameFromObjectConsItem, matchObjectConsItem)
 }
 
 func (m *matcher) objectConsItem(item1, item2 hclsyntax.ObjectConsItem) bool {
@@ -343,16 +361,7 @@ func matchString(m *matcher, x, y interface{}) bool {
 }
 
 func (m *matcher) potentialWildcardIdentsEqual(identX, identY []string) bool {
-	ss1 := make([]interface{}, len(identX))
-	for i, n := range identX {
-		ss1[i] = n
-	}
-	ss2 := make([]interface{}, len(identY))
-	for i, n := range identY {
-		ss2[i] = n
-	}
-
-	return m.iterableMatches(ss1, ss2, wildNameFromString, matchString)
+	return m.iterableMatches(stringIterable(identX), stringIterable(identY), wildNameFromString, matchString)
 }
 
 func (m *matcher) potentialWildcardIdentEqual(identX, identY string) bool {
