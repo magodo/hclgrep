@@ -96,11 +96,6 @@ func tokenize(src string) (fullTokens, error) {
 			panic("never reach here")
 		}
 		t = next()
-
-		paren := false
-		if paren = t.Type == hclsyntax.TokenOParen; paren {
-			t = next()
-		}
 		if string(t.Bytes) == string(hclsyntax.TokenStar) {
 			switch wildcardTokenType {
 			case hclsyntax.TokenType(TokenWildcard):
@@ -113,11 +108,6 @@ func tokenize(src string) (fullTokens, error) {
 		if t.Type != hclsyntax.TokenIdent {
 			return nil, fmt.Errorf("%v: wildcard must be followed by ident, got %v",
 				t.Range, t.Type)
-		}
-		if paren {
-			if cp := next(); cp.Type != hclsyntax.TokenCParen {
-				return nil, fmt.Errorf("%v: expected )", cp.Range)
-			}
 		}
 		toks = append(toks, fullToken{
 			Type:  wildcardTokenType,
