@@ -213,6 +213,19 @@ func (it objectConsItemIterable) len() int {
 func (m *matcher) iterableMatches(ns1, ns2 iterable, nf wildNameFunc, mf matchFunc) bool {
 	i1, i2 := 0, 0
 	next1, next2 := 0, 0
+
+	// We need to keep a copy of m.values so that we can restart
+	// with a different "any of" match while discarding any matches
+	// we found while trying it.
+	var oldMatches map[string]substitution
+	backupMatches := func() {
+		oldMatches = make(map[string]substitution, len(m.values))
+		for k, v := range m.values {
+			oldMatches[k] = v
+		}
+	}
+	backupMatches()
+
 	for i1 < ns1.len() || i2 < ns2.len() {
 		if i1 < ns1.len() {
 			n1 := ns1.at(i1)
@@ -222,6 +235,7 @@ func (m *matcher) iterableMatches(ns1, ns2 iterable, nf wildNameFunc, mf matchFu
 				next1 = i1
 				next2 = i2 + 1
 				i1++
+				backupMatches()
 				continue
 			}
 			if i2 < ns2.len() && mf(m, n1, ns2.at(i2)) {
@@ -235,6 +249,7 @@ func (m *matcher) iterableMatches(ns1, ns2 iterable, nf wildNameFunc, mf matchFu
 		if 0 < next2 && next2 <= ns2.len() {
 			i1 = next1
 			i2 = next2
+			m.values = oldMatches
 			continue
 		}
 		return false
