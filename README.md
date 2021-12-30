@@ -1,5 +1,7 @@
 # hclgrep
 
+![workflow](https://github.com/magodo/hclgrep/actions/workflows/go.yml/badge.svg)
+
 Search for HCL(v2) using syntax tree.
 
 The idea is heavily inspired by https://github.com/mvdan/gogrep.
