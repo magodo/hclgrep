@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -12,7 +13,7 @@ import (
 )
 
 var usage = func() {
-	fmt.Fprint(os.Stderr, `usage: hclgrep pattern [files]
+	fmt.Fprint(os.Stderr, `usage: hclgrep -x PATTERN ... [FILE...]
 
 hclgrep performs a query on the given HCL(v2) files.
 
@@ -21,7 +22,7 @@ A pattern is a piece of HCL code which may include wildcards. It can be:
 - A body (zero or more attributes, and zero or more blocks)
 - An expression
 
-There are two types of wildcards, depending on the scope it resides in:
+There are two types of wildcards can be used in a pattern, depending on the scope it resides in:
 
 - Attribute wildcard ("@"): represents an attribute, a block or an object element
 - Expression wildcard ("$"): represents an expression or a place that a string is accepted (i.e. as a block type, block label)
@@ -40,31 +41,48 @@ If "*" is before the name, it will match any number of nodes. Example:
 `)
 }
 
+type patternFlag []string
+
+func (o *patternFlag) String() string { return "" }
+func (o *patternFlag) Set(val string) error {
+	*o = append(*o, val)
+	return nil
+}
+
 func main() {
 	flag.Usage = usage
+
+	var patterns patternFlag
+	flag.Var(&patterns, "x", "")
 	flag.Parse()
-	args := flag.Args()
-	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "hclgrep: need at least one arg, try 'hclgrep -h' for more information")
+	if len(patterns) < 1 {
+		fmt.Fprintln(os.Stderr, "hclgrep: need at least one pattern, try 'hclgrep -h' for more information")
 		os.Exit(1)
 	}
-	if err := grepArgs(args[0], args[1:]); err != nil {
+
+	files := flag.Args()
+	if err := grep(patterns, files); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func grepArgs(expr string, files []string) error {
-	exprNode, err := compileExpr(expr)
-	if err != nil {
-		return err
+func grep(exprs []string, files []string) error {
+	var exprNodes []hclsyntax.Node
+	for _, expr := range exprs {
+		exprNode, err := compileExpr(expr)
+		if err != nil {
+			return fmt.Errorf("compiling expression %q: %w", expr, err)
+		}
+		exprNodes = append(exprNodes, exprNode)
 	}
+
 	if len(files) == 0 {
 		b, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return fmt.Errorf("reading from stdin: %w", err)
 		}
-		return grepOneSource(exprNode, "stdin", b)
+		return grepOneSource(exprNodes, "stdin", b)
 	}
 
 	for _, file := range files {
@@ -72,21 +90,50 @@ func grepArgs(expr string, files []string) error {
 		if err != nil {
 			return fmt.Errorf("reading file %s: %w", file, err)
 		}
-		if err := grepOneSource(exprNode, file, b); err != nil {
+		if err := grepOneSource(exprNodes, file, b); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func grepOneSource(exprNode hclsyntax.Node, fileName string, b []byte) error {
+type orderedNodes []hclsyntax.Node
+
+func (nodes orderedNodes) Less(i, j int) bool {
+	return nodes[i].Range().Start.Byte < nodes[j].Range().Start.Byte
+}
+func (nodes orderedNodes) Swap(i, j int) {
+	nodes[i], nodes[j] = nodes[j], nodes[i]
+}
+func (nodes orderedNodes) Len() int {
+	return len(nodes)
+}
+
+func grepOneSource(exprNodes []hclsyntax.Node, fileName string, b []byte) error {
 	f, diags := hclsyntax.ParseConfig(b, fileName, hcl.InitialPos)
 	if diags.HasErrors() {
 		return fmt.Errorf("cannot parse source: %s", diags.Error())
 	}
 	srcNode := bodyContent(f.Body.(*hclsyntax.Body))
 
-	nodes := matches(exprNode, srcNode)
+	nodes := orderedNodes{srcNode}
+	for _, exprNode := range exprNodes {
+		wl := make([]hclsyntax.Node, len(nodes))
+		copy(wl, nodes)
+		nodeMap := map[hclsyntax.Node]bool{}
+		for _, node := range wl {
+			matchedNodes := matches(exprNode, node)
+			for _, mn := range matchedNodes {
+				nodeMap[mn] = true
+			}
+		}
+		nodes = make(orderedNodes, 0, len(nodeMap))
+		for node := range nodeMap {
+			nodes = append(nodes, node)
+		}
+		sort.Sort(nodes)
+	}
+
 	wd, _ := os.Getwd()
 	for _, n := range nodes {
 		rng := n.Range()

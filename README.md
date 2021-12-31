@@ -12,14 +12,14 @@ The idea is heavily inspired by https://github.com/mvdan/gogrep.
 
 ## Usage
 
-    usage: hclgrep pattern [files]
+    usage: hclgrep -x PATTERN ... [FILE...]
 
 A pattern is a piece of HCL code which may include wildcards. It can be:
 
 - A [body](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#bodies) (zero or more attributes, and zero or more blocks)
 - An [expression](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#expressions)
 
-There are two types of wildcards, depending on the scope it resides in:
+There are two types of wildcards can be used in a pattern, depending on the scope it resides in:
 
 - Attribute wildcard ("@"): represents an [attribute](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#attribute-definitions), a [block](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#blocks), or an [object element](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#collection-values)
 - Expression wildcard ("$"): represents an [expression](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md#expressions) or a place that a string is accepted (i.e. as a block type, block label)
@@ -36,15 +36,15 @@ If "*" is before the name, it will match **any** number of nodes. Example:
         @*_  # any number of attributes/blocks inside the resource block body
     }
 
-Note that currently **any** wildcard doesn't remeber the matched wildcard name.
-
 ## Example
 
 ```
-$ hclgrep 'dynamic $_ {@*_}' main.tf            # Grep dynamic blocks used in Terraform config
-$ hclgrep 'var.$_[count.index]' main.tf         # Grep potential mis-used "count" in Terraform config
+$ hclgrep -x 'dynamic $_ {@*_}' main.tf                     # Grep dynamic blocks used in Terraform config
+$ hclgrep -x 'var.$_[count.index]' main.tf                  # Grep potential mis-used "count" in Terraform config
+$ hclgrep -x 'module $_ {@*_}' -x 'source = $_' main.tf     # Grep module source addresses in Terraform config
 ```
 
 ## Limitation
 
 - The **any** expression wildcard (`$*`) doesn't work inside a traversal.
+- The **any** wildcard doesn't remember the matched wildcard name.
