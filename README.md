@@ -44,6 +44,12 @@ $ hclgrep -x 'var.$_[count.index]' main.tf                  # Grep potential mis
 $ hclgrep -x 'module $_ {@*_}' -x 'source = $_' main.tf     # Grep module source addresses in Terraform config
 ```
 
+Especially, to grep for the evaluated Terraform configurations, run following command in the root module (given there is no output variables defined):
+
+```
+$ terraform show -no-color | sed --expression 's;(sensitive value);"";' | hclgrep -x '<pattern>'
+```
+
 ## Limitation
 
 - The **any** expression wildcard (`$*`) doesn't work inside a traversal.
