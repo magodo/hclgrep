@@ -70,6 +70,7 @@ func TestMatch(t *testing.T) {
 		{"[$*_, 1]", "[1, 2, 3]", 0},
 		{"[$*_]", "[]", 1},
 		{"[$*_, $x]", "[1, 2, 3]", 1},
+		{"[$x, $*_, $x]", "[1, 2, 2]", 0}, // TODO: fix this up
 
 		// object const expression
 		{"{a = b}", "{a = b}", 1},
@@ -609,6 +610,13 @@ blk1 {
     c = d
 }`,
 			count: 1,
+		},
+		{
+			expr: `$_`,
+			src: `
+blk1 {}
+blk1 {}`,
+			count: 5, // 1 toplevel body + 2* (1 body + 1 block)
 		},
 
 		// body

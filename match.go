@@ -436,6 +436,12 @@ func (m *matcher) traverser(t1, t2 hcl.Traverser) bool {
 }
 
 func (m *matcher) wildcardMatchNode(name string, node hclsyntax.Node) bool {
+	switch node.(type) {
+	case hclsyntax.Attributes,
+		hclsyntax.Blocks:
+		return false
+	}
+
 	if name == "_" {
 		// values are discarded, matches anything
 		return true
