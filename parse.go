@@ -16,6 +16,8 @@ func parse(src []byte, filename string, start hcl.Pos) (hclsyntax.Node, hcl.Diag
 	if diags.HasErrors() {
 		return nil, diags
 	}
+	// This is critical for parsing the pattern, as here actually wants the specified attribute or block,
+	// but not the whole file body, given it is parsed as a file.
 	return bodyContent(f.Body.(*hclsyntax.Body)), nil
 }
 

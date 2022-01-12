@@ -41,7 +41,7 @@ func tokenize(src string) (fullTokens, error) {
 
 	var diags hcl.Diagnostics
 	for _, diag := range _diags {
-		if tok := string(diag.Subject.SliceBytes([]byte(src))); diag.Summary == "Invalid character" && tok == wildcardLit || tok == attrWildcardLit {
+		if tok := string(diag.Subject.SliceBytes([]byte(src))); diag.Summary == "Invalid character" && (tok == wildcardLit || tok == attrWildcardLit) {
 			continue
 		}
 		diags = diags.Append(diag)

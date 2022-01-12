@@ -114,7 +114,7 @@ func grepOneSource(exprNodes []hclsyntax.Node, fileName string, b []byte) error 
 	if diags.HasErrors() {
 		return fmt.Errorf("cannot parse source: %s", diags.Error())
 	}
-	srcNode := bodyContent(f.Body.(*hclsyntax.Body))
+	srcNode := f.Body.(*hclsyntax.Body)
 
 	nodes := orderedNodes{srcNode}
 	for _, exprNode := range exprNodes {

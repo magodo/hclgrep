@@ -56,18 +56,7 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 	if pattern == nil || node == nil {
 		return pattern == node
 	}
-	if pattern != nil {
-		switch node := node.(type) {
-		case hclsyntax.Attributes:
-			if len(node) == 0 {
-				return false
-			}
-		case hclsyntax.Blocks:
-			if len(node) == 0 {
-				return false
-			}
-		}
-	}
+
 	switch x := pattern.(type) {
 	// Expressions
 	case *hclsyntax.LiteralValueExpr:
@@ -350,16 +339,14 @@ func (m *matcher) operation(op1, op2 *hclsyntax.Operation) bool {
 // ObjectConsItems comparisons
 
 func wildNameFromObjectConsItem(in interface{}) (string, bool) {
-	switch node := in.(hclsyntax.ObjectConsItem).KeyExpr.(type) {
-	case *hclsyntax.ObjectConsKeyExpr:
+	if node, ok := in.(hclsyntax.ObjectConsItem).KeyExpr.(*hclsyntax.ObjectConsKeyExpr); ok {
 		name, ok := variableExpr(node.Wrapped)
 		if !ok {
 			return "", false
 		}
 		return fromWildName(name)
-	default:
-		return "", false
 	}
+	return "", false
 }
 
 func matchObjectConsItem(m *matcher, x, y interface{}) bool {
@@ -367,16 +354,18 @@ func matchObjectConsItem(m *matcher, x, y interface{}) bool {
 	return m.objectConsItem(itemX, itemY)
 }
 
-func (m *matcher) objectConsItems(items1, items2 []hclsyntax.ObjectConsItem) bool {
-	return m.iterableMatches(objectConsItemIterable(items1), objectConsItemIterable(items2), wildNameFromObjectConsItem, matchObjectConsItem)
-}
-
 func (m *matcher) objectConsItem(item1, item2 hclsyntax.ObjectConsItem) bool {
-	name, ok := variableExpr(item1.KeyExpr)
-	if ok && isWildAttr(name, item1.ValueExpr) {
-		return m.wildcardMatchObjectConsItem(name, item2)
+	if key1, ok := item1.KeyExpr.(*hclsyntax.ObjectConsKeyExpr); ok {
+		name, ok := variableExpr(key1.Wrapped)
+		if ok && isWildAttr(name, item1.ValueExpr) {
+			return m.wildcardMatchObjectConsItem(name, item2)
+		}
 	}
 	return m.node(item1.KeyExpr, item2.KeyExpr) && m.node(item1.ValueExpr, item2.ValueExpr)
+}
+
+func (m *matcher) objectConsItems(items1, items2 []hclsyntax.ObjectConsItem) bool {
+	return m.iterableMatches(objectConsItemIterable(items1), objectConsItemIterable(items2), wildNameFromObjectConsItem, matchObjectConsItem)
 }
 
 // String comparisons
@@ -390,16 +379,16 @@ func matchString(m *matcher, x, y interface{}) bool {
 	return m.potentialWildcardIdentEqual(sx, sy)
 }
 
-func (m *matcher) potentialWildcardIdentsEqual(identX, identY []string) bool {
-	return m.iterableMatches(stringIterable(identX), stringIterable(identY), wildNameFromString, matchString)
-}
-
 func (m *matcher) potentialWildcardIdentEqual(identX, identY string) bool {
 	if !isWildName(identX) {
 		return identX == identY
 	}
 	name, _ := fromWildName(identX)
 	return m.wildcardMatchString(name, identY)
+}
+
+func (m *matcher) potentialWildcardIdentsEqual(identX, identY []string) bool {
+	return m.iterableMatches(stringIterable(identX), stringIterable(identY), wildNameFromString, matchString)
 }
 
 // Traversal comparisons
@@ -435,7 +424,12 @@ func (m *matcher) traverser(t1, t2 hcl.Traverser) bool {
 	}
 }
 
+// Wildcard matchers
+
 func (m *matcher) wildcardMatchNode(name string, node hclsyntax.Node) bool {
+	// Wildcard never matches multiple attributes/blocks.
+	// On one hand, it is because we have any wildcard, which already meets this requirement.
+	// One the other hand, Go panics to use the attributes/blocks slice as map key.
 	switch node.(type) {
 	case hclsyntax.Attributes,
 		hclsyntax.Blocks:
@@ -594,9 +588,6 @@ func fromWildName(name string) (ident string, any bool) {
 }
 
 func variableExpr(node hclsyntax.Node) (string, bool) {
-	if _, ok := node.(*hclsyntax.ObjectConsKeyExpr); ok {
-		node = node.(*hclsyntax.ObjectConsKeyExpr).Wrapped
-	}
 	vexp, ok := node.(*hclsyntax.ScopeTraversalExpr)
 	if !(ok && len(vexp.Traversal) == 1 && !vexp.Traversal.IsRelative()) {
 		return "", false
