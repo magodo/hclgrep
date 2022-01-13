@@ -131,8 +131,8 @@ func grepOneSource(exprNodes []hclsyntax.Node, fileName string, b []byte) error 
 		for node := range nodeMap {
 			nodes = append(nodes, node)
 		}
-		sort.Sort(nodes)
 	}
+	sort.Sort(nodes)
 
 	wd, _ := os.Getwd()
 	for _, n := range nodes {

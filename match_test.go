@@ -70,7 +70,6 @@ func TestMatch(t *testing.T) {
 		{"[$*_, 1]", "[1, 2, 3]", 0},
 		{"[$*_]", "[]", 1},
 		{"[$*_, $x]", "[1, 2, 3]", 1},
-		{"[$x, $*_, $x]", "[1, 2, 2]", 0}, // TODO: fix this up
 
 		// object const expression
 		{"{a = b}", "{a = b}", 1},
