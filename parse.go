@@ -1,9 +1,25 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
+
+func compileExpr(expr string) (hclsyntax.Node, error) {
+	toks, err := tokenize(expr)
+	if err != nil {
+		return nil, fmt.Errorf("cannot tokenize expr: %v", err)
+	}
+
+	p := toks.Bytes()
+	node, diags := parse(p, "", hcl.InitialPos)
+	if diags.HasErrors() {
+		return nil, fmt.Errorf("cannot parse expr: %v", diags.Error())
+	}
+	return node, nil
+}
 
 func parse(src []byte, filename string, start hcl.Pos) (hclsyntax.Node, hcl.Diagnostics) {
 	// try as expr

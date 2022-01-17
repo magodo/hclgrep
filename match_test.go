@@ -1,7 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"github.com/hashicorp/hcl/v2"
+	"io"
+	"strconv"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -811,6 +815,43 @@ blk {
 	}
 }
 
+func TestParent(t *testing.T) {
+	tests := []struct {
+		expr, src string
+		n         int
+		expect    string
+	}{
+		{
+			expr: "x = 1",
+			src: `
+blk {
+  x = 1
+}`,
+			n: 1,
+			expect: `{
+  x = 1
+}`,
+		},
+		{
+			expr: "x = 1",
+			src: `
+blk {
+  x = 1
+}`,
+			n: 2,
+			expect: `blk {
+  x = 1
+}`,
+		},
+	}
+
+	for i, tc := range tests {
+		t.Run(fmt.Sprintf("%02d", i), func(t *testing.T) {
+			parentTest(t, tc.expr, tc.src, tc.n, tc.expect)
+		})
+	}
+}
+
 func matchStrs(expr, src string) ([]hclsyntax.Node, error) {
 	exprNode, err := compileExpr(expr)
 	if err != nil {
@@ -820,30 +861,86 @@ func matchStrs(expr, src string) ([]hclsyntax.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return matches(exprNode, srcNode), nil
+	m := matcher{
+		out: io.Discard,
+	}
+	return m.matches([]cmd{
+		{
+			name:  "x",
+			src:   expr,
+			value: exprNode,
+		},
+	}, srcNode), nil
 }
 
 func matchTest(t *testing.T, expr, src string, anyWant interface{}) {
-	terr := func(format string, a ...interface{}) {
-		t.Errorf("%s | %s: %s", expr, src, fmt.Sprintf(format, a...))
+	tfatalf := func(format string, a ...interface{}) {
+		t.Fatalf("%s | %s: %s", expr, src, fmt.Sprintf(format, a...))
 	}
 	matches, err := matchStrs(expr, src)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {
-			terr("wanted error %q, got none", want)
+			tfatalf("wanted error %q, got none", want)
 		} else if got := err.Error(); got != string(want) {
-			terr("wanted error %q, got %q", want, got)
+			tfatalf("wanted error %q, got %q", want, got)
 		}
 	case int:
 		if err != nil {
-			terr("unexpected error: %v", err)
-			return
+			tfatalf("unexpected error: %v", err)
 		}
 		if len(matches) != want {
-			terr("wanted %d matches, got=%d", want, len(matches))
+			tfatalf("wanted %d matches, got=%d", want, len(matches))
 		}
 	default:
 		panic(fmt.Sprintf("unexpected anyWant type: %T", anyWant))
 	}
+}
+
+func parentTest(t *testing.T, expr, src string, n int, expect string) {
+	tfatalf := func(format string, a ...interface{}) {
+		t.Fatalf("%s | %s | %d: %s", expr, src, n, fmt.Sprintf(format, a...))
+	}
+	matches, err := matchParentStrs(expr, src, n)
+	if err != nil {
+		tfatalf("unexpected error: %v", err)
+	}
+	switch len(matches) {
+	case 0:
+		tfatalf("no match")
+	case 1:
+		m := matches[0]
+		got := string(m.Range().SliceBytes([]byte(src)))
+		if expect != got {
+			tfatalf("wanted:\n%s\ngot:\n%s\n", expect, got)
+		}
+	default:
+		tfatalf("unexpected multiple matches")
+	}
+}
+
+func matchParentStrs(expr, src string, n int) ([]hclsyntax.Node, error) {
+	exprNode, err := compileExpr(expr)
+	if err != nil {
+		return nil, err
+	}
+	srcNode, diags := parse([]byte(src), "", hcl.InitialPos)
+	if diags.HasErrors() {
+		return nil, errors.New(diags.Error())
+	}
+	m := matcher{
+		out: io.Discard,
+	}
+	return m.matches([]cmd{
+		{
+			name:  "x",
+			src:   expr,
+			value: exprNode,
+		},
+		{
+			name:  "p",
+			src:   strconv.Itoa(n),
+			value: n,
+		},
+	}, srcNode), nil
 }

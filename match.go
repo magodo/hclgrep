@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,19 +12,155 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
-func matches(exprNode, node hclsyntax.Node) []hclsyntax.Node {
-	matches := []hclsyntax.Node{}
+type matcher struct {
+	out     io.Writer
+	parents map[hclsyntax.Node]hclsyntax.Node
+
+	// node values recorded by name, excluding "_" (used only by the
+	// actual matching phase)
+	values map[string]substitution
+}
+
+// file matches one file against one or more cmds, output the final matches to matcher's out.
+func (m *matcher) file(cmds []cmd, fileName string, in io.Reader) error {
+	m.parents = make(map[hclsyntax.Node]hclsyntax.Node)
+	b, err := io.ReadAll(in)
+	if err != nil {
+		return err
+	}
+	f, diags := hclsyntax.ParseConfig(b, fileName, hcl.InitialPos)
+	if diags.HasErrors() {
+		return fmt.Errorf("cannot parse source: %s", diags.Error())
+	}
+	matches := m.matches(cmds, f.Body.(*hclsyntax.Body))
+	wd, _ := os.Getwd()
+	for _, n := range matches {
+		rng := n.Range()
+		if strings.HasPrefix(rng.Filename, wd) {
+			rng.Filename = rng.Filename[len(wd)+1:]
+		}
+		fmt.Fprintf(m.out, "%s:\n%s\n", rng, string(rng.SliceBytes(b)))
+	}
+	return nil
+}
+
+// matches matches one node against one or more cmds.
+func (m *matcher) matches(cmds []cmd, node hclsyntax.Node) []hclsyntax.Node {
+	m.fillParents(node)
+	initial := []submatch{{node: node, values: map[string]substitution{}}}
+	final := m.submatches(cmds, initial)
+	matches := make([]hclsyntax.Node, len(final))
+	for i := range matches {
+		matches[i] = final[i].node
+	}
+	return matches
+}
+
+type parentsWalker struct {
+	stack   []hclsyntax.Node
+	parents map[hclsyntax.Node]hclsyntax.Node
+}
+
+func (w *parentsWalker) Enter(node hclsyntax.Node) hcl.Diagnostics {
+	switch node.(type) {
+	case hclsyntax.Attributes,
+		hclsyntax.Blocks,
+		hclsyntax.ChildScope:
+		return nil
+	}
+	w.parents[node] = w.stack[len(w.stack)-1]
+	w.stack = append(w.stack, node)
+	return nil
+}
+
+func (w *parentsWalker) Exit(node hclsyntax.Node) hcl.Diagnostics {
+	switch node.(type) {
+	case hclsyntax.Attributes,
+		hclsyntax.Blocks,
+		hclsyntax.ChildScope:
+		return nil
+	}
+	w.stack = w.stack[:len(w.stack)-1]
+	return nil
+}
+
+func (m *matcher) fillParents(nodes ...hclsyntax.Node) {
+	walker := &parentsWalker{
+		parents: map[hclsyntax.Node]hclsyntax.Node{},
+		stack:   make([]hclsyntax.Node, 1, 32),
+	}
+	for _, node := range nodes {
+		hclsyntax.Walk(node, walker)
+	}
+	m.parents = walker.parents
+}
+
+type submatch struct {
+	node   hclsyntax.Node
+	values map[string]substitution
+}
+
+func (m *matcher) submatches(cmds []cmd, subs []submatch) []submatch {
+	if len(cmds) == 0 {
+		return subs
+	}
+	var fn func(cmd, []submatch) []submatch
+	cmd := cmds[0]
+	switch cmd.name {
+	case "x":
+		fn = m.cmdMatch
+	case "p":
+		fn = m.cmdParent
+	default:
+		panic(fmt.Sprintf("unknown command: %q", cmd.name))
+	}
+	return m.submatches(cmds[1:], fn(cmd, subs))
+}
+
+func (m *matcher) cmdMatch(cmd cmd, subs []submatch) []submatch {
+	var matches []submatch
+	patternNode := cmd.value.(hclsyntax.Node)
+	var startValues map[string]substitution
 	match := func(node hclsyntax.Node) {
-		m := matcher{values: map[string]substitution{}}
-		if m.node(exprNode, node) {
-			matches = append(matches, node)
+		m.values = valsCopy(startValues)
+		if m.node(patternNode, node) {
+			matches = append(matches, submatch{
+				node:   node,
+				values: m.values,
+			})
 		}
 	}
-	hclsyntax.VisitAll(node, func(node hclsyntax.Node) hcl.Diagnostics {
-		match(node)
-		return nil
-	})
+	for _, sub := range subs {
+		startValues = valsCopy(sub.values)
+		hclsyntax.VisitAll(sub.node, func(node hclsyntax.Node) hcl.Diagnostics {
+			match(node)
+			return nil
+		})
+	}
 	return matches
+}
+
+func (m *matcher) cmdParent(cmd cmd, subs []submatch) []submatch {
+	for i := range subs {
+		sub := &subs[i]
+		reps := cmd.value.(int)
+		for j := 0; j < reps; j++ {
+			sub.node = m.parentOf(sub.node)
+		}
+	}
+	return subs
+}
+
+func (m *matcher) parentOf(node hclsyntax.Node) hclsyntax.Node {
+	return m.parents[node]
+}
+
+func valsCopy(values map[string]substitution) map[string]substitution {
+	v2 := make(map[string]substitution, len(values))
+	for k, v := range values {
+		v2[k] = v
+	}
+	return v2
 }
 
 type substitution struct {
@@ -46,10 +184,6 @@ func newObjectConsItemSubstitution(item *hclsyntax.ObjectConsItem) substitution 
 
 func newTraverserSubstitution(trav hcl.Traverser) substitution {
 	return substitution{Traverser: &trav}
-}
-
-type matcher struct {
-	values map[string]substitution
 }
 
 func (m *matcher) node(pattern, node hclsyntax.Node) bool {

@@ -1,21 +1,19 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"io"
 	"os"
-	"sort"
-	"strings"
-
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 var usage = func() {
-	fmt.Fprint(os.Stderr, `usage: hclgrep -x PATTERN ... [FILE...]
+	fmt.Fprint(os.Stderr, `usage: hclgrep commands [FILE...]
 
 hclgrep performs a query on the given HCL(v2) files.
+
+A command is one of the following:
+
+    -x pattern    find all nodes matching a pattern
+    -p number     navigate up a number of node parents
 
 A pattern is a piece of HCL code which may include wildcards. It can be:
 
@@ -41,120 +39,36 @@ If "*" is before the name, it will match any number of nodes. Example:
 `)
 }
 
-type patternFlag []string
-
-func (o *patternFlag) String() string { return "" }
-func (o *patternFlag) Set(val string) error {
-	*o = append(*o, val)
-	return nil
-}
-
 func main() {
-	flag.Usage = usage
-
-	var patterns patternFlag
-	flag.Var(&patterns, "x", "")
-	flag.Parse()
-	if len(patterns) < 1 {
-		fmt.Fprintln(os.Stderr, "hclgrep: need at least one pattern, try 'hclgrep -h' for more information")
-		os.Exit(1)
-	}
-
-	files := flag.Args()
-	if err := grep(patterns, files); err != nil {
+	cmds, files, err := parseCmds(os.Args[1:])
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
 
-func grep(exprs []string, files []string) error {
-	var exprNodes []hclsyntax.Node
-	for _, expr := range exprs {
-		exprNode, err := compileExpr(expr)
-		if err != nil {
-			return fmt.Errorf("compiling expression %q: %w", expr, err)
-		}
-		exprNodes = append(exprNodes, exprNode)
+	m := matcher{
+		out: os.Stdout,
 	}
 
 	if len(files) == 0 {
-		b, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return fmt.Errorf("reading from stdin: %w", err)
+		if err := m.file(cmds, "stdin", os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
-		return grepOneSource(exprNodes, "stdin", b)
+		return
 	}
 
 	for _, file := range files {
-		b, err := os.ReadFile(file)
+		in, err := os.Open(file)
 		if err != nil {
-			return fmt.Errorf("reading file %s: %w", file, err)
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
-		if err := grepOneSource(exprNodes, file, b); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type orderedNodes []hclsyntax.Node
-
-func (nodes orderedNodes) Less(i, j int) bool {
-	return nodes[i].Range().Start.Byte < nodes[j].Range().Start.Byte
-}
-func (nodes orderedNodes) Swap(i, j int) {
-	nodes[i], nodes[j] = nodes[j], nodes[i]
-}
-func (nodes orderedNodes) Len() int {
-	return len(nodes)
-}
-
-func grepOneSource(exprNodes []hclsyntax.Node, fileName string, b []byte) error {
-	f, diags := hclsyntax.ParseConfig(b, fileName, hcl.InitialPos)
-	if diags.HasErrors() {
-		return fmt.Errorf("cannot parse source: %s", diags.Error())
-	}
-	srcNode := f.Body.(*hclsyntax.Body)
-
-	nodes := orderedNodes{srcNode}
-	for _, exprNode := range exprNodes {
-		wl := make([]hclsyntax.Node, len(nodes))
-		copy(wl, nodes)
-		nodeMap := map[hclsyntax.Node]bool{}
-		for _, node := range wl {
-			matchedNodes := matches(exprNode, node)
-			for _, mn := range matchedNodes {
-				nodeMap[mn] = true
-			}
-		}
-		nodes = make(orderedNodes, 0, len(nodeMap))
-		for node := range nodeMap {
-			nodes = append(nodes, node)
+		err = m.file(cmds, file, in)
+		in.Close()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	}
-	sort.Sort(nodes)
-
-	wd, _ := os.Getwd()
-	for _, n := range nodes {
-		rng := n.Range()
-		if strings.HasPrefix(rng.Filename, wd) {
-			rng.Filename = rng.Filename[len(wd)+1:]
-		}
-		fmt.Printf("%s:\n%s\n", rng, string(rng.SliceBytes(b)))
-	}
-	return nil
-}
-
-func compileExpr(expr string) (hclsyntax.Node, error) {
-	toks, err := tokenize(expr)
-	if err != nil {
-		return nil, fmt.Errorf("cannot tokenize expr: %v", err)
-	}
-
-	p := toks.Bytes()
-	node, diags := parse(p, "", hcl.InitialPos)
-	if diags.HasErrors() {
-		return nil, fmt.Errorf("cannot parse expr: %v", diags.Error())
-	}
-	return node, nil
 }

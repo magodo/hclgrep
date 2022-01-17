@@ -12,7 +12,12 @@ The idea is heavily inspired by https://github.com/mvdan/gogrep.
 
 ## Usage
 
-    usage: hclgrep -x PATTERN ... [FILE...]
+    usage: hclgrep commands [FILE...]
+
+A command is one of the following:
+
+    -x pattern    find all nodes matching a pattern
+    -p number     navigate up a number of node parents
 
 A pattern is a piece of HCL code which may include wildcards. It can be:
 
@@ -42,6 +47,9 @@ If "*" is before the name, it will match **any** number of nodes. Example:
 $ hclgrep -x 'dynamic $_ {@*_}' main.tf                     # Grep dynamic blocks used in Terraform config
 $ hclgrep -x 'var.$_[count.index]' main.tf                  # Grep potential mis-used "count" in Terraform config
 $ hclgrep -x 'module $_ {@*_}' -x 'source = $_' main.tf     # Grep module source addresses in Terraform config
+
+# Grep AzureRM Terraform network security rule resource which allows 22 port for inbound traffic
+$ hclgrep -x 'resource azurerm_network_security_rule $_ {@*_}' -x 'direction = "Inbound"' -p 1 -x 'access = "Allow"' -p 1 -x 'source_port_range = "22"' -p 1 main.tf 
 ```
 
 Especially, to grep for the evaluated Terraform configurations, run following command in the root module (given there is no output variables defined):
