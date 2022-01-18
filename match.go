@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/zclconf/go-cty/cty"
 	"io"
 	"os"
 	"sort"
@@ -111,6 +112,8 @@ func (m *matcher) submatches(cmds []cmd, subs []submatch) []submatch {
 		fn = m.cmdMatch
 	case "p":
 		fn = m.cmdParent
+	case "rx":
+		fn = m.cmdRx
 	default:
 		panic(fmt.Sprintf("unknown command: %q", cmd.name))
 	}
@@ -119,7 +122,7 @@ func (m *matcher) submatches(cmds []cmd, subs []submatch) []submatch {
 
 func (m *matcher) cmdMatch(cmd cmd, subs []submatch) []submatch {
 	var matches []submatch
-	patternNode := cmd.value.(hclsyntax.Node)
+	patternNode := cmd.value.Value().(hclsyntax.Node)
 	var startValues map[string]substitution
 	match := func(node hclsyntax.Node) {
 		m.values = valsCopy(startValues)
@@ -143,11 +146,74 @@ func (m *matcher) cmdMatch(cmd cmd, subs []submatch) []submatch {
 func (m *matcher) cmdParent(cmd cmd, subs []submatch) []submatch {
 	var newsubs []submatch
 	for _, sub := range subs {
-		reps := cmd.value.(int)
+		reps := int(cmd.value.Value().(CmdValueLevel))
 		for j := 0; j < reps; j++ {
 			sub.node = m.parentOf(sub.node)
 		}
 		if sub.node != nil {
+			newsubs = append(newsubs, sub)
+		}
+	}
+	return newsubs
+}
+
+func (m *matcher) cmdRx(cmd cmd, subs []submatch) []submatch {
+	var newsubs []submatch
+	for _, sub := range subs {
+		rx := cmd.value.Value().(CmdValueRx)
+		val := sub.values[rx.name]
+		var valLit string
+		switch {
+		case val.String != nil:
+			valLit = *val.String
+		case val.Node != nil:
+			var ok bool
+			// check whether the node is a variable
+			valLit, ok = variableExpr(val.Node)
+			if !ok {
+				switch node := val.Node.(type) {
+				case *hclsyntax.TemplateExpr:
+					if len(node.Parts) != 1 {
+						continue
+					}
+					tmpl := node.Parts[0]
+					lve, ok := tmpl.(*hclsyntax.LiteralValueExpr)
+					if !ok {
+						continue
+					}
+					value, _ := lve.Value(nil)
+					valLit = value.AsString()
+				case *hclsyntax.LiteralValueExpr:
+					value, _ := node.Value(nil)
+					switch value.Type() {
+					case cty.String:
+						valLit = value.AsString()
+					case cty.Bool:
+						valLit = "true"
+						if value.False() {
+							valLit = "false"
+						}
+					case cty.Number:
+						// TODO: handle float?
+						valLit = value.AsBigFloat().String()
+					}
+				}
+			}
+		case val.ObjectConsItem != nil:
+		case val.Traverser != nil:
+			switch trav := (*val.Traverser).(type) {
+			case hcl.TraverseRoot:
+				valLit = trav.Name
+			case hcl.TraverseAttr:
+				valLit = trav.Name
+			default:
+				continue
+			}
+		default:
+			panic("never reach here")
+		}
+
+		if rx.rx.MatchString(valLit) {
 			newsubs = append(newsubs, sub)
 		}
 	}

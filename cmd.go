@@ -3,14 +3,40 @@ package main
 import (
 	"flag"
 	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 type cmd struct {
 	name  string
 	src   string
-	value interface{}
+	value CmdValue
 }
+
+type CmdValue interface {
+	Value() interface{}
+}
+
+type CmdValueRx struct {
+	name string
+	rx   regexp.Regexp
+}
+
+func (v CmdValueRx) Value() interface{} { return v }
+
+type CmdValueNode struct {
+	hclsyntax.Node
+}
+
+func (v CmdValueNode) Value() interface{} { return v.Node }
+
+type CmdValueLevel int
+
+func (v CmdValueLevel) Value() interface{} { return v }
 
 type strCmdFlag struct {
 	name string
@@ -36,6 +62,10 @@ func parseCmds(args []string) ([]cmd, []string, error) {
 		name: "p",
 		cmds: &cmds,
 	}, "p", "")
+	flagSet.Var(&strCmdFlag{
+		name: "rx",
+		cmds: &cmds,
+	}, "rx", "")
 
 	flagSet.Parse(args)
 	files := flagSet.Args()
@@ -51,7 +81,13 @@ func parseCmds(args []string) ([]cmd, []string, error) {
 			if err != nil {
 				return nil, nil, err
 			}
-			cmds[i].value = node
+			cmds[i].value = CmdValueNode{node}
+		case "rx":
+			name, rx, err := parseRegexpAttr(cmd.src)
+			if err != nil {
+				return nil, nil, err
+			}
+			cmds[i].value = CmdValueRx{name: name, rx: *rx}
 		case "p":
 			n, err := strconv.Atoi(cmd.src)
 			if err != nil {
@@ -60,8 +96,58 @@ func parseCmds(args []string) ([]cmd, []string, error) {
 			if n < 0 {
 				return nil, nil, fmt.Errorf("the number follows `-p` must >=0, got %d", n)
 			}
-			cmds[i].value = n
+			cmds[i].value = CmdValueLevel(n)
 		}
 	}
 	return cmds, files, nil
+}
+
+func parseAttr(attr string) (string, string, error) {
+	tokens, diags := hclsyntax.LexExpression([]byte(attr), "", hcl.InitialPos)
+	if diags.HasErrors() {
+		return "", "", fmt.Errorf(diags.Error())
+	}
+	next := func() hclsyntax.Token {
+		tok := tokens[0]
+		tokens = tokens[1:]
+		return tok
+	}
+	tok := next()
+	if tok.Type != hclsyntax.TokenIdent {
+		return "", "", fmt.Errorf("%v: attribute must starts with an ident, got %q", tok.Range, tok.Type)
+	}
+	name := string(tok.Bytes)
+	if tok := next(); tok.Type != hclsyntax.TokenEqual {
+		return "", "", fmt.Errorf(`%v: attribute name must be followed by "=", got %q`, tok.Range, tok.Type)
+	}
+	if tok := next(); tok.Type != hclsyntax.TokenOQuote {
+		return "", "", fmt.Errorf("%v: attribute value must enclose within quotes", tok.Range)
+	}
+	tok = next()
+	if tok.Type != hclsyntax.TokenQuotedLit {
+		return "", "", fmt.Errorf("%v: attribute value must enclose within quotes", tok.Range)
+	}
+	value := string(tok.Bytes)
+	if tok := next(); tok.Type != hclsyntax.TokenCQuote {
+		return "", "", fmt.Errorf("%v: attribute value must enclose within quotes", tok.Range)
+	}
+	if tok := next(); tok.Type != hclsyntax.TokenEOF {
+		return "", "", fmt.Errorf("%v: invalid content after attribute value", tok.Range)
+	}
+	return name, value, nil
+}
+
+func parseRegexpAttr(attr string) (string, *regexp.Regexp, error) {
+	name, value, err := parseAttr(attr)
+	if err != nil {
+		return "", nil, fmt.Errorf("cannot parse attribute: %v", err)
+	}
+	if !strings.HasPrefix(value, "&") {
+		value = "^" + value
+	}
+	if !strings.HasSuffix(value, "$") {
+		value = value + "$"
+	}
+	rx, err := regexp.Compile(value)
+	return name, rx, err
 }

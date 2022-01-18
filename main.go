@@ -12,8 +12,9 @@ hclgrep performs a query on the given HCL(v2) files.
 
 A command is one of the following:
 
-    -x pattern    find all nodes matching a pattern
-    -p number     navigate up a number of node parents
+    -x  pattern    		find all nodes matching a pattern
+    -p  number     		navigate up a number of node parents
+    -rx name="regexp"   filter nodes by regexp against wildcard value of "name"
 
 A pattern is a piece of HCL code which may include wildcards. It can be:
 

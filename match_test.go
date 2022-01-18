@@ -19,6 +19,10 @@ func parseErr(msg string) wantErr {
 	return wantErr("cannot parse expr: " + msg)
 }
 
+func attrErr(msg string) wantErr {
+	return wantErr("cannot parse attribute: " + msg)
+}
+
 func TestMatch(t *testing.T) {
 	tests := []struct {
 		args []string
@@ -852,6 +856,53 @@ blk {
 			want: `blk {
   x = 1
 }`,
+		},
+
+		// "-rx"
+		{
+			args: []string{"-x", "x = $a", "-rx", `a="1"`},
+			src:  `x = 1`,
+			want: `x = 1`,
+		},
+		{
+			args: []string{"-x", "x = $a", "-rx", `a="f.."`},
+			src:  `x = "foo"`,
+			want: `x = "foo"`,
+		},
+		{
+			args: []string{"-x", "x = $a", "-rx", `a="true"`},
+			src:  `x = true`,
+			want: `x = true`,
+		},
+		{
+			args: []string{"-x", "x = $a", "-rx", `a="false"`},
+			src:  `x = true`,
+			want: 0,
+		},
+		{
+			args: []string{"-x", "x = $a", "-rx", ``},
+			src:  ``,
+			want: attrErr(":1,1-1: attribute must starts with an ident, got \"TokenEOF\""),
+		},
+		{
+			args: []string{"-x", "x = $a", "-rx", `a1`},
+			src:  ``,
+			want: attrErr(":1,3-3: attribute name must be followed by \"=\", got \"TokenEOF\""),
+		},
+		{
+			args: []string{"-x", "x = $a", "-rx", `a1=abc`},
+			src:  ``,
+			want: attrErr(":1,4-7: attribute value must enclose within quotes"),
+		},
+		{
+			args: []string{"-x", "x = $a", "-rx", `a1="abc`},
+			src:  ``,
+			want: attrErr(":1,8-8: attribute value must enclose within quotes"),
+		},
+		{
+			args: []string{"-x", "x = $a", "-rx", `a1="abc"tail`},
+			src:  ``,
+			want: attrErr(":1,9-13: invalid content after attribute value"),
 		},
 	}
 
