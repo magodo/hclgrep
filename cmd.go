@@ -49,13 +49,16 @@ func parseCmds(args []string) ([]cmd, []string, error) {
 		case "x":
 			node, err := compileExpr(cmd.src)
 			if err != nil {
-				return nil, nil, fmt.Errorf("compiling expression %q: %w", node, err)
+				return nil, nil, err
 			}
 			cmds[i].value = node
 		case "p":
 			n, err := strconv.Atoi(cmd.src)
 			if err != nil {
 				return nil, nil, err
+			}
+			if n < 0 {
+				return nil, nil, fmt.Errorf("the number follows `-p` must >=0, got %d", n)
 			}
 			cmds[i].value = n
 		}
