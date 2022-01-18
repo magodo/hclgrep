@@ -3,10 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/hashicorp/hcl/v2"
 	"io"
 	"strconv"
 	"testing"
+
+	"github.com/hashicorp/hcl/v2"
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
@@ -819,7 +820,7 @@ func TestParent(t *testing.T) {
 	tests := []struct {
 		expr, src string
 		n         int
-		expect    string
+		expect    interface{}
 	}{
 		{
 			expr: "x = 1",
@@ -842,6 +843,16 @@ blk {
 			expect: `blk {
   x = 1
 }`,
+		},
+		// Exceeding the parent boundary results into no match
+		{
+			expr: "x = 1",
+			src: `
+blk {
+  x = 1
+}`,
+			n:      3,
+			expect: 0,
 		},
 	}
 
@@ -897,7 +908,7 @@ func matchTest(t *testing.T, expr, src string, anyWant interface{}) {
 	}
 }
 
-func parentTest(t *testing.T, expr, src string, n int, expect string) {
+func parentTest(t *testing.T, expr, src string, n int, anyWant interface{}) {
 	tfatalf := func(format string, a ...interface{}) {
 		t.Fatalf("%s | %s | %d: %s", expr, src, n, fmt.Sprintf(format, a...))
 	}
@@ -905,17 +916,34 @@ func parentTest(t *testing.T, expr, src string, n int, expect string) {
 	if err != nil {
 		tfatalf("unexpected error: %v", err)
 	}
-	switch len(matches) {
-	case 0:
-		tfatalf("no match")
-	case 1:
+	switch want := anyWant.(type) {
+	case wantErr:
+		if err == nil {
+			tfatalf("wanted error %q, got none", want)
+		} else if got := err.Error(); got != string(want) {
+			tfatalf("wanted error %q, got %q", want, got)
+		}
+	case int:
+		if err != nil {
+			tfatalf("unexpected error: %v", err)
+		}
+		if len(matches) != want {
+			tfatalf("wanted %d matches, got=%d", want, len(matches))
+		}
+	case string:
+		if err != nil {
+			tfatalf("unexpected error: %v", err)
+		}
+		if len(matches) != 1 {
+			tfatalf("unexpected multiple matches", len(matches))
+		}
 		m := matches[0]
 		got := string(m.Range().SliceBytes([]byte(src)))
-		if expect != got {
-			tfatalf("wanted:\n%s\ngot:\n%s\n", expect, got)
+		if want != got {
+			tfatalf("wanted:\n%s\ngot:\n%s\n", want, got)
 		}
 	default:
-		tfatalf("unexpected multiple matches")
+		panic(fmt.Sprintf("unexpected anyWant type: %T", anyWant))
 	}
 }
 

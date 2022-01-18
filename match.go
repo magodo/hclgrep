@@ -141,14 +141,17 @@ func (m *matcher) cmdMatch(cmd cmd, subs []submatch) []submatch {
 }
 
 func (m *matcher) cmdParent(cmd cmd, subs []submatch) []submatch {
-	for i := range subs {
-		sub := &subs[i]
+	var newsubs []submatch
+	for _, sub := range subs {
 		reps := cmd.value.(int)
 		for j := 0; j < reps; j++ {
 			sub.node = m.parentOf(sub.node)
 		}
+		if sub.node != nil {
+			newsubs = append(newsubs, sub)
+		}
 	}
-	return subs
+	return newsubs
 }
 
 func (m *matcher) parentOf(node hclsyntax.Node) hclsyntax.Node {
