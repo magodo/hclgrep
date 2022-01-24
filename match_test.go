@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -21,6 +22,10 @@ func parseErr(msg string) wantErr {
 
 func attrErr(msg string) wantErr {
 	return wantErr("cannot parse attribute: " + msg)
+}
+
+func otherErr(msg string) wantErr {
+	return wantErr(msg)
 }
 
 func TestMatch(t *testing.T) {
@@ -805,6 +810,9 @@ blk {
 		// expr parse errors
 		{[]string{"-x", "a = "}, "", parseErr(":1,3-3: Missing expression; Expected the start of an expression, but found the end of the file.")},
 
+		// no command
+		{[]string{}, "", otherErr("need at least one command")},
+
 		// empty source
 		{[]string{"-x", ""}, "", 1},
 		{[]string{"-x", "\t"}, "", 1},
@@ -917,7 +925,11 @@ func matchTest(t *testing.T, args []string, src string, anyWant interface{}) {
 	tfatalf := func(format string, a ...interface{}) {
 		t.Fatalf("%v | %s: %s", args, src, fmt.Sprintf(format, a...))
 	}
-	cmds, _, err := parseCmds(args)
+	m := &matcher{
+		out:  io.Discard,
+		test: true,
+	}
+	cmds, _, err := m.parseCmds(args)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {
@@ -932,7 +944,7 @@ func matchTest(t *testing.T, args []string, src string, anyWant interface{}) {
 		tfatalf("unexpected error: %v", err)
 	}
 
-	matches := matchStrs(cmds, src)
+	matches := matchStrs(m, cmds, src)
 	switch want := anyWant.(type) {
 	case int:
 		if len(matches) != want {
@@ -956,13 +968,93 @@ func matchTest(t *testing.T, args []string, src string, anyWant interface{}) {
 	}
 }
 
-func matchStrs(cmds []cmd, src string) []hclsyntax.Node {
+func matchStrs(m *matcher, cmds []cmd, src string) []hclsyntax.Node {
 	srcNode, err := parse([]byte(src), "", hcl.InitialPos)
 	if err != nil {
 		panic(fmt.Sprintf("parsing source node: %v", err))
 	}
-	m := matcher{
-		out: io.Discard,
-	}
 	return m.matches(cmds, srcNode)
+}
+
+func TestFile(t *testing.T) {
+	tests := []struct {
+		args []string
+		src  string
+		want interface{}
+	}{
+		// invalid -H value
+		{[]string{"-H=foo"}, "", otherErr(`invalid boolean value "foo" for -H: flag can only be boolean`)},
+
+		// reading from stdin without -H
+		{[]string{"-x", "foo = bar"}, "foo = bar", "foo = bar\n"},
+		// reading from stdin with -H
+		{[]string{"-H", "-x", "foo = bar"}, "foo = bar", `:1,1-10:
+foo = bar
+`},
+		// reading from stdin with -H=false
+		{[]string{"-H=false", "-x", "foo = bar"}, "foo = bar", "foo = bar\n"},
+
+		// reading from one file without -H
+		{[]string{"-x", "foo = bar", "file"}, "foo = bar", "foo = bar\n"},
+		// reading from one file with -H
+		{[]string{"-H", "-x", "foo = bar", "file"}, "foo = bar", `:1,1-10:
+foo = bar
+`},
+		// reading from one file with -H=false
+		{[]string{"-H=false", "-x", "foo = bar", "file"}, "foo = bar", "foo = bar\n"},
+
+		// reading from one multiple files without -H
+		{[]string{"-x", "foo = bar", "file1", "file2"}, "foo = bar", `:1,1-10:
+foo = bar
+`},
+		// reading from one multiple files with -H
+		{[]string{"-H", "-x", "foo = bar", "file1", "file2"}, "foo = bar", `:1,1-10:
+foo = bar
+`},
+		// reading from one multiple files with -H=false
+		{[]string{"-H=false", "-x", "foo = bar", "file1", "file2"}, "foo = bar", "foo = bar\n"},
+	}
+
+	for i, tc := range tests {
+		t.Run(fmt.Sprintf("%02d", i), func(t *testing.T) {
+			fileTest(t, tc.args, tc.src, tc.want)
+		})
+	}
+}
+
+func fileTest(t *testing.T, args []string, src string, anyWant interface{}) {
+	tfatalf := func(format string, a ...interface{}) {
+		t.Fatalf("%v | %s: %s", args, src, fmt.Sprintf(format, a...))
+	}
+	buf := bytes.NewBufferString("")
+	m := &matcher{
+		out:  buf,
+		test: true,
+	}
+	cmds, _, err := m.parseCmds(args)
+	switch want := anyWant.(type) {
+	case wantErr:
+		if err == nil {
+			tfatalf("wanted error %q, got none", want)
+		} else if got := err.Error(); got != string(want) {
+			tfatalf("wanted error %q, got %q", want, got)
+		}
+		return
+	}
+	if err != nil {
+		tfatalf("unexpected error: %v", err)
+	}
+
+	if err := m.file(cmds, "", bytes.NewBufferString(src)); err != nil {
+		tfatalf("m.file() error: %v", err)
+	}
+	switch want := anyWant.(type) {
+	case string:
+		got := buf.String()
+		if want != got {
+			tfatalf("wanted:\n%s\ngot:\n%s\n", want, got)
+		}
+	default:
+		panic(fmt.Sprintf("unexpected anyWant type: %T", anyWant))
+	}
 }

@@ -6,14 +6,18 @@ import (
 )
 
 var usage = func() {
-	fmt.Fprint(os.Stderr, `usage: hclgrep commands [FILE...]
+	fmt.Fprint(os.Stderr, `usage: hclgrep [options] commands [FILE...]
 
 hclgrep performs a query on the given HCL(v2) files.
 
+An option is one of the following:
+
+    -H                  prefix the filename and byte offset of a match (defaults to "true" when reading from multiple files)
+
 A command is one of the following:
 
-    -x  pattern    		find all nodes matching a pattern
-    -p  number     		navigate up a number of node parents
+    -x  pattern         find all nodes matching a pattern
+    -p  number          navigate up a number of node parents
     -rx name="regexp"   filter nodes by regexp against wildcard value of "name"
 
 A pattern is a piece of HCL code which may include wildcards. It can be:
@@ -41,14 +45,14 @@ If "*" is before the name, it will match any number of nodes. Example:
 }
 
 func main() {
-	cmds, files, err := parseCmds(os.Args[1:])
+	m := matcher{
+		out: os.Stdout,
+	}
+
+	cmds, files, err := m.parseCmds(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
-	}
-
-	m := matcher{
-		out: os.Stdout,
 	}
 
 	if len(files) == 0 {

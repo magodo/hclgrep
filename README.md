@@ -12,7 +12,11 @@ The idea is heavily inspired by https://github.com/mvdan/gogrep.
 
 ## Usage
 
-    usage: hclgrep commands [FILE...]
+    usage: hclgrep [options] commands [FILE...]
+
+An option is one of the following:
+
+    -H                  prefix the filename and byte offset of a match (defaults to "true" when reading from multiple files)
 
 A command is one of the following:
 

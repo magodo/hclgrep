@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/zclconf/go-cty/cty"
 	"io"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/zclconf/go-cty/cty"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -17,9 +18,15 @@ type matcher struct {
 	out     io.Writer
 	parents map[hclsyntax.Node]hclsyntax.Node
 
+	// whether prefix the matches with filenname and byte offset
+	prefix bool
+
 	// node values recorded by name, excluding "_" (used only by the
 	// actual matching phase)
 	values map[string]substitution
+
+	// only set for unit test
+	test bool
 }
 
 // file matches one file against one or more cmds, output the final matches to matcher's out.
@@ -37,10 +44,15 @@ func (m *matcher) file(cmds []cmd, fileName string, in io.Reader) error {
 	wd, _ := os.Getwd()
 	for _, n := range matches {
 		rng := n.Range()
-		if strings.HasPrefix(rng.Filename, wd) {
-			rng.Filename = rng.Filename[len(wd)+1:]
+		output := string(rng.SliceBytes(b))
+		if m.prefix {
+			if strings.HasPrefix(rng.Filename, wd) {
+				rng.Filename = rng.Filename[len(wd)+1:]
+			}
+			output = fmt.Sprintf("%s:\n%s", rng, output)
 		}
-		fmt.Fprintf(m.out, "%s:\n%s\n", rng, string(rng.SliceBytes(b)))
+
+		fmt.Fprintf(m.out, "%s\n", output)
 	}
 	return nil
 }

@@ -49,9 +49,33 @@ func (o *strCmdFlag) Set(val string) error {
 	return nil
 }
 
-func parseCmds(args []string) ([]cmd, []string, error) {
-	flagSet := flag.NewFlagSet("hclgrep", flag.ExitOnError)
+type prefixFlag struct {
+	val bool
+	set bool
+}
+
+func (o *prefixFlag) String() string { return "" }
+func (o *prefixFlag) Set(val string) error {
+	if val != "false" && val != "true" {
+		return fmt.Errorf("flag can only be boolean")
+	}
+	o.val = val == "true"
+	o.set = true
+	return nil
+}
+
+func (o *prefixFlag) IsBoolFlag() bool { return true }
+
+func (m *matcher) parseCmds(args []string) ([]cmd, []string, error) {
+	eh := flag.ExitOnError
+	if m.test {
+		eh = flag.ContinueOnError
+	}
+	flagSet := flag.NewFlagSet("hclgrep", eh)
 	flagSet.Usage = usage
+
+	var prefixflag prefixFlag
+	flagSet.Var(&prefixflag, "H", "prefix filename and byte offset for a match")
 
 	var cmds []cmd
 	flagSet.Var(&strCmdFlag{
@@ -67,8 +91,16 @@ func parseCmds(args []string) ([]cmd, []string, error) {
 		cmds: &cmds,
 	}, "rx", "")
 
-	flagSet.Parse(args)
+	if err := flagSet.Parse(args); err != nil {
+		return nil, nil, err
+	}
+
 	files := flagSet.Args()
+
+	m.prefix = prefixflag.val
+	if !prefixflag.set {
+		m.prefix = len(files) >= 2
+	}
 
 	if len(cmds) < 1 {
 		return nil, nil, fmt.Errorf("need at least one command")
