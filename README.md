@@ -21,6 +21,8 @@ An option is one of the following:
 A command is one of the following:
 
     -x  pattern         find all nodes matching a pattern
+	-g  pattern         discard nodes not matching a pattern
+	-v  pattern         discard nodes matching a pattern
     -p  number          navigate up a number of node parents
     -rx name="regexp"   filter nodes by regexp against wildcard value of "name"
 
@@ -55,9 +57,9 @@ $ hclgrep -x 'module $_ {@*_}' -x 'source = $_' main.tf     # Grep module source
 
 # Grep AzureRM Terraform network security rule resource which allows 22 port for inbound traffic
 $ hclgrep -x 'resource azurerm_network_security_rule $_ {@*_}' \
-    -x 'direction = "Inbound"' -p 1 \
-    -x 'access = "Allow"' -p 1 \
-    -x 'source_port_range = "22"' -p 1 \
+    -g 'direction = "Inbound"' \
+    -g 'access = "Allow"' \
+    -g 'source_port_range = "22"' \
     main.tf 
 ```
 

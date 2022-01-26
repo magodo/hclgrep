@@ -17,6 +17,8 @@ An option is one of the following:
 A command is one of the following:
 
     -x  pattern         find all nodes matching a pattern
+	-g  pattern         discard nodes not matching a pattern
+	-v  pattern         discard nodes matching a pattern
     -p  number          navigate up a number of node parents
     -rx name="regexp"   filter nodes by regexp against wildcard value of "name"
 

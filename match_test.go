@@ -912,6 +912,36 @@ blk {
 			src:  ``,
 			want: attrErr(":1,9-13: invalid content after attribute value"),
 		},
+
+		// "-v"
+		{
+			args: []string{"-x", "blk {@*_}", "-v", `a = $_`},
+			src: `blk {
+	a = 1
+}
+
+blk {
+	b = 1
+}`,
+			want: `blk {
+	b = 1
+}`,
+		},
+
+		// "-g"
+		{
+			args: []string{"-x", "blk {@*_}", "-g", `a = $_`},
+			src: `blk {
+	a = 1
+}
+
+blk {
+	b = 1
+}`,
+			want: `blk {
+	a = 1
+}`,
+		},
 	}
 
 	for i, tc := range tests {

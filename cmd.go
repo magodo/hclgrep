@@ -83,6 +83,14 @@ func (m *matcher) parseCmds(args []string) ([]cmd, []string, error) {
 		cmds: &cmds,
 	}, "x", "")
 	flagSet.Var(&strCmdFlag{
+		name: "g",
+		cmds: &cmds,
+	}, "g", "")
+	flagSet.Var(&strCmdFlag{
+		name: "v",
+		cmds: &cmds,
+	}, "v", "")
+	flagSet.Var(&strCmdFlag{
 		name: "p",
 		cmds: &cmds,
 	}, "p", "")
@@ -108,12 +116,6 @@ func (m *matcher) parseCmds(args []string) ([]cmd, []string, error) {
 
 	for i, cmd := range cmds {
 		switch cmd.name {
-		case "x":
-			node, err := compileExpr(cmd.src)
-			if err != nil {
-				return nil, nil, err
-			}
-			cmds[i].value = CmdValueNode{node}
 		case "rx":
 			name, rx, err := parseRegexpAttr(cmd.src)
 			if err != nil {
@@ -129,6 +131,12 @@ func (m *matcher) parseCmds(args []string) ([]cmd, []string, error) {
 				return nil, nil, fmt.Errorf("the number follows `-p` must >=0, got %d", n)
 			}
 			cmds[i].value = CmdValueLevel(n)
+		default:
+			node, err := compileExpr(cmd.src)
+			if err != nil {
+				return nil, nil, err
+			}
+			cmds[i].value = CmdValueNode{node}
 		}
 	}
 	return cmds, files, nil

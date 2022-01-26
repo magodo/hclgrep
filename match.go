@@ -122,6 +122,10 @@ func (m *matcher) submatches(cmds []cmd, subs []submatch) []submatch {
 	switch cmd.name {
 	case "x":
 		fn = m.cmdMatch
+	case "g":
+		fn = m.cmdFilter(true)
+	case "v":
+		fn = m.cmdFilter(false)
 	case "p":
 		fn = m.cmdParent
 	case "rx":
@@ -153,6 +157,27 @@ func (m *matcher) cmdMatch(cmd cmd, subs []submatch) []submatch {
 		})
 	}
 	return matches
+}
+
+func (m *matcher) cmdFilter(wantMatch bool) func(cmd, []submatch) []submatch {
+	return func(cmd cmd, subs []submatch) []submatch {
+		var matches []submatch
+		var any bool
+		for _, sub := range subs {
+			any = false
+			hclsyntax.VisitAll(sub.node, func(node hclsyntax.Node) hcl.Diagnostics {
+				m.values = valsCopy(sub.values)
+				if m.node(cmd.value.Value().(hclsyntax.Node), node) {
+					any = true
+				}
+				return nil
+			})
+			if any == wantMatch {
+				matches = append(matches, sub)
+			}
+		}
+		return matches
+	}
 }
 
 func (m *matcher) cmdParent(cmd cmd, subs []submatch) []submatch {
