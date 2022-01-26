@@ -69,7 +69,7 @@ If "\*" is before the name, it will match **any** number of nodes. Example:
 
 - Grep AzureRM Terraform network security rule resource which allows 22 port for inbound traffic
 
-        $ hclgrep -x 'resource azurerm*network_security_rule $* {@\*\_}' \
+        $ hclgrep -x 'resource azurerm_network_security_rule $_ {@*_}' \
         -g 'direction = "Inbound"' \
         -g 'access = "Allow"' \
         -g 'destination_port_range = $port' \
