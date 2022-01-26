@@ -198,7 +198,10 @@ func (m *matcher) cmdRx(cmd cmd, subs []submatch) []submatch {
 	var newsubs []submatch
 	for _, sub := range subs {
 		rx := cmd.value.Value().(CmdValueRx)
-		val := sub.values[rx.name]
+		val, ok := sub.values[rx.name]
+		if !ok {
+			continue
+		}
 		var valLit string
 		switch {
 		case val.String != nil:

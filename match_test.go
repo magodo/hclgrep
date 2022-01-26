@@ -888,6 +888,11 @@ blk {
 			want: 0,
 		},
 		{
+			args: []string{"-x", "x = $a", "-rx", `nonexist="false"`},
+			src:  `x = true`,
+			want: 0,
+		},
+		{
 			args: []string{"-x", "x = $a", "-rx", ``},
 			src:  ``,
 			want: attrErr(":1,1-1: attribute must starts with an ident, got \"TokenEOF\""),
