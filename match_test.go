@@ -932,6 +932,18 @@ blk {
 	b = 1
 }`,
 		},
+		// `-v` pattern won't record wildcard name
+		{
+			args: []string{"-x", "blk {@*_}", "-v", `a = $x`, "-rx", `x="1"`},
+			src: `blk {
+	a = 1
+}
+
+blk {
+	b = 1
+}`,
+			want: 0,
+		},
 
 		// "-g"
 		{
@@ -946,6 +958,41 @@ blk {
 			want: `blk {
 	a = 1
 }`,
+		},
+		// `-g` pattern records wildcard name
+		{
+			args: []string{"-x", "blk {@*_}", "-g", `a = $x`, "-rx", `x="1"`},
+			src: `blk {
+	a = 1
+}
+
+blk {
+	b = 1
+}`,
+			want: `blk {
+	a = 1
+}`,
+		},
+		// short circut of -g pattern match, the recorded wildcard name is the first match (DFS)
+		{
+			args: []string{"-x", "blk {@*_}", "-g", `a = $x`, "-rx", `x="1"`},
+			src: `blk {
+	a = 1
+	nest {
+		a = 2
+	}
+}`,
+			want: 1,
+		},
+		{
+			args: []string{"-x", "blk {@*_}", "-g", `a = $x`, "-rx", `x="2"`},
+			src: `blk {
+	a = 1
+	nest {
+		a = 2
+	}
+}`,
+			want: 0,
 		},
 	}
 

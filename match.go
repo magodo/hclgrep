@@ -138,21 +138,15 @@ func (m *matcher) submatches(cmds []cmd, subs []submatch) []submatch {
 
 func (m *matcher) cmdMatch(cmd cmd, subs []submatch) []submatch {
 	var matches []submatch
-	patternNode := cmd.value.Value().(hclsyntax.Node)
-	var startValues map[string]substitution
-	match := func(node hclsyntax.Node) {
-		m.values = valsCopy(startValues)
-		if m.node(patternNode, node) {
-			matches = append(matches, submatch{
-				node:   node,
-				values: m.values,
-			})
-		}
-	}
 	for _, sub := range subs {
-		startValues = valsCopy(sub.values)
 		hclsyntax.VisitAll(sub.node, func(node hclsyntax.Node) hcl.Diagnostics {
-			match(node)
+			m.values = valsCopy(sub.values)
+			if m.node(cmd.value.Value().(hclsyntax.Node), node) {
+				matches = append(matches, submatch{
+					node:   node,
+					values: m.values,
+				})
+			}
 			return nil
 		})
 	}
@@ -166,6 +160,10 @@ func (m *matcher) cmdFilter(wantMatch bool) func(cmd, []submatch) []submatch {
 		for _, sub := range subs {
 			any = false
 			hclsyntax.VisitAll(sub.node, func(node hclsyntax.Node) hcl.Diagnostics {
+				// return early if already match, so that the values are kept to be the state of the first match (DFS)
+				if any {
+					return nil
+				}
 				m.values = valsCopy(sub.values)
 				if m.node(cmd.value.Value().(hclsyntax.Node), node) {
 					any = true
@@ -173,6 +171,10 @@ func (m *matcher) cmdFilter(wantMatch bool) func(cmd, []submatch) []submatch {
 				return nil
 			})
 			if any == wantMatch {
+				// update the values of submatch for '-g'
+				if wantMatch {
+					sub.values = m.values
+				}
 				matches = append(matches, sub)
 			}
 		}

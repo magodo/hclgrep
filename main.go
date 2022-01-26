@@ -36,6 +36,8 @@ The wildcards are followed by a name. Each wildcard with the same name must matc
 
     $x.$_ = $x # assignment of self to a field in self
 
+The wildcard name is only recorded for "-x" command or "-g" command (the first match in DFS).
+
 If "*" is before the name, it will match any number of nodes. Example:
 
     [$*_] # any number of elements in a tuple

@@ -40,6 +40,8 @@ The wildcards are followed by a name. Each wildcard with the same name must matc
 
     $x.$_ = $x # assignment of self to a field in self
 
+The wildcard name is only recorded for "-x" command or "-g" command (the first match in DFS).
+
 If "*" is before the name, it will match **any** number of nodes. Example:
 
     [$*_] # any number of elements in a tuple
@@ -59,7 +61,8 @@ $ hclgrep -x 'module $_ {@*_}' -x 'source = $_' main.tf     # Grep module source
 $ hclgrep -x 'resource azurerm_network_security_rule $_ {@*_}' \
     -g 'direction = "Inbound"' \
     -g 'access = "Allow"' \
-    -g 'source_port_range = "22"' \
+    -g 'source_port_range = $port' \
+    -rx 'port="22"' \
     main.tf 
 ```
 
