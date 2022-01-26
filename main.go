@@ -6,7 +6,7 @@ import (
 )
 
 var usage = func() {
-	fmt.Fprint(os.Stderr, `usage: hclgrep [options] commands [FILE...]
+	fmt.Fprintf(os.Stderr, `usage: hclgrep [options] commands [FILE...]
 
 hclgrep performs a query on the given HCL(v2) files.
 
@@ -16,11 +16,12 @@ An option is one of the following:
 
 A command is one of the following:
 
-    -x  pattern         find all nodes matching a pattern
-	-g  pattern         discard nodes not matching a pattern
-	-v  pattern         discard nodes matching a pattern
-    -p  number          navigate up a number of node parents
-    -rx name="regexp"   filter nodes by regexp against wildcard value of "name"
+	-%s  pattern         find all nodes matching a pattern
+	-%s  pattern         discard nodes not matching a pattern
+	-%s  pattern         discard nodes matching a pattern
+	-%s  number          navigate up a number of node parents
+	-%s name="regexp"   filter nodes by regexp against wildcard value of "name"
+	-%s  name            print the wildcard node only (must be the last command)
 
 A pattern is a piece of HCL code which may include wildcards. It can be:
 
@@ -45,7 +46,7 @@ If "*" is before the name, it will match any number of nodes. Example:
     resource foo "name" {
         @*_  # any number of attributes/blocks inside the resource block body
     }
-`)
+`, CmdNameMatch, CmdNameFilterMatch, CmdNameFilterUnMatch, CmdNameParent, CmdNameRx, CmdNameWrite)
 }
 
 func main() {

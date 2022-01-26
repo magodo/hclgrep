@@ -1105,6 +1105,13 @@ foo = bar
 `},
 		// reading from one multiple files with -H=false
 		{[]string{"-H=false", "-x", "foo = bar", "file1", "file2"}, "foo = bar", "foo = bar\n"},
+
+		// -w only prints nothing
+		{[]string{"-w", "abc"}, "foo = bar", ""},
+		// -w is not the last command
+		{[]string{"-x", "foo = $a", "-w", "a", "-x", "foo = $a"}, "foo = bar", otherErr("`-w` must be the last command")},
+		// -w
+		{[]string{"-x", "foo = $a", "-w", "a"}, "foo = bar", "bar\n"},
 	}
 
 	for i, tc := range tests {
@@ -1121,6 +1128,7 @@ func fileTest(t *testing.T, args []string, src string, anyWant interface{}) {
 	buf := bytes.NewBufferString("")
 	m := &matcher{
 		out:  buf,
+		b:    []byte(src),
 		test: true,
 	}
 	cmds, _, err := m.parseCmds(args)

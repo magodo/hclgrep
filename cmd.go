@@ -11,8 +11,19 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
+type CmdName string
+
+const (
+	CmdNameMatch         CmdName = "x"
+	CmdNameFilterMatch           = "g"
+	CmdNameFilterUnMatch         = "v"
+	CmdNameRx                    = "rx"
+	CmdNameParent                = "p"
+	CmdNameWrite                 = "w"
+)
+
 type cmd struct {
-	name  string
+	name  CmdName
 	src   string
 	value CmdValue
 }
@@ -38,8 +49,12 @@ type CmdValueLevel int
 
 func (v CmdValueLevel) Value() interface{} { return v }
 
+type CmdValueString string
+
+func (v CmdValueString) Value() interface{} { return v }
+
 type strCmdFlag struct {
-	name string
+	name CmdName
 	cmds *[]cmd
 }
 
@@ -79,25 +94,29 @@ func (m *matcher) parseCmds(args []string) ([]cmd, []string, error) {
 
 	var cmds []cmd
 	flagSet.Var(&strCmdFlag{
-		name: "x",
+		name: CmdNameMatch,
 		cmds: &cmds,
-	}, "x", "")
+	}, string(CmdNameMatch), "")
 	flagSet.Var(&strCmdFlag{
-		name: "g",
+		name: CmdNameFilterMatch,
 		cmds: &cmds,
-	}, "g", "")
+	}, string(CmdNameFilterMatch), "")
 	flagSet.Var(&strCmdFlag{
-		name: "v",
+		name: CmdNameFilterUnMatch,
 		cmds: &cmds,
-	}, "v", "")
+	}, string(CmdNameFilterUnMatch), "")
 	flagSet.Var(&strCmdFlag{
-		name: "p",
+		name: CmdNameParent,
 		cmds: &cmds,
-	}, "p", "")
+	}, string(CmdNameParent), "")
 	flagSet.Var(&strCmdFlag{
-		name: "rx",
+		name: CmdNameRx,
 		cmds: &cmds,
-	}, "rx", "")
+	}, string(CmdNameRx), "")
+	flagSet.Var(&strCmdFlag{
+		name: CmdNameWrite,
+		cmds: &cmds,
+	}, string(CmdNameWrite), "")
 
 	if err := flagSet.Parse(args); err != nil {
 		return nil, nil, err
@@ -116,19 +135,24 @@ func (m *matcher) parseCmds(args []string) ([]cmd, []string, error) {
 
 	for i, cmd := range cmds {
 		switch cmd.name {
-		case "rx":
+		case CmdNameWrite:
+			if i != len(cmds)-1 {
+				return nil, nil, fmt.Errorf("`-%s` must be the last command", cmd.name)
+			}
+			cmds[i].value = CmdValueString(cmd.src)
+		case CmdNameRx:
 			name, rx, err := parseRegexpAttr(cmd.src)
 			if err != nil {
 				return nil, nil, err
 			}
 			cmds[i].value = CmdValueRx{name: name, rx: *rx}
-		case "p":
+		case CmdNameParent:
 			n, err := strconv.Atoi(cmd.src)
 			if err != nil {
 				return nil, nil, err
 			}
 			if n < 0 {
-				return nil, nil, fmt.Errorf("the number follows `-p` must >=0, got %d", n)
+				return nil, nil, fmt.Errorf("the number follows `-%s` must >=0, got %d", cmd.name, n)
 			}
 			cmds[i].value = CmdValueLevel(n)
 		default:

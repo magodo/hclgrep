@@ -17,6 +17,7 @@ import (
 type matcher struct {
 	out     io.Writer
 	parents map[hclsyntax.Node]hclsyntax.Node
+	b       []byte
 
 	// whether prefix the matches with filenname and byte offset
 	prefix bool
@@ -32,19 +33,25 @@ type matcher struct {
 // file matches one file against one or more cmds, output the final matches to matcher's out.
 func (m *matcher) file(cmds []cmd, fileName string, in io.Reader) error {
 	m.parents = make(map[hclsyntax.Node]hclsyntax.Node)
-	b, err := io.ReadAll(in)
+	var err error
+	m.b, err = io.ReadAll(in)
 	if err != nil {
 		return err
 	}
-	f, diags := hclsyntax.ParseConfig(b, fileName, hcl.InitialPos)
+	f, diags := hclsyntax.ParseConfig(m.b, fileName, hcl.InitialPos)
 	if diags.HasErrors() {
 		return fmt.Errorf("cannot parse source: %s", diags.Error())
 	}
 	matches := m.matches(cmds, f.Body.(*hclsyntax.Body))
 	wd, _ := os.Getwd()
+
+	if cmds[len(cmds)-1].name == CmdNameWrite {
+		return nil
+	}
+
 	for _, n := range matches {
 		rng := n.Range()
-		output := string(rng.SliceBytes(b))
+		output := string(rng.SliceBytes(m.b))
 		if m.prefix {
 			if strings.HasPrefix(rng.Filename, wd) {
 				rng.Filename = rng.Filename[len(wd)+1:]
@@ -120,16 +127,18 @@ func (m *matcher) submatches(cmds []cmd, subs []submatch) []submatch {
 	var fn func(cmd, []submatch) []submatch
 	cmd := cmds[0]
 	switch cmd.name {
-	case "x":
+	case CmdNameMatch:
 		fn = m.cmdMatch
-	case "g":
+	case CmdNameFilterMatch:
 		fn = m.cmdFilter(true)
-	case "v":
+	case CmdNameFilterUnMatch:
 		fn = m.cmdFilter(false)
-	case "p":
+	case CmdNameParent:
 		fn = m.cmdParent
-	case "rx":
+	case CmdNameRx:
 		fn = m.cmdRx
+	case CmdNameWrite:
+		fn = m.cmdWrite
 	default:
 		panic(fmt.Sprintf("unknown command: %q", cmd.name))
 	}
@@ -260,6 +269,36 @@ func (m *matcher) cmdRx(cmd cmd, subs []submatch) []submatch {
 		}
 	}
 	return newsubs
+}
+
+func (m *matcher) cmdWrite(cmd cmd, subs []submatch) []submatch {
+	for _, sub := range subs {
+		name := string(cmd.value.Value().(CmdValueString))
+		val, ok := sub.values[name]
+		if !ok {
+			continue
+		}
+		switch {
+		case val.String != nil:
+			fmt.Fprintln(m.out, *val.String)
+		case val.Node != nil:
+			fmt.Fprintln(m.out, string(val.Node.Range().SliceBytes(m.b)))
+		case val.ObjectConsItem != nil:
+		case val.Traverser != nil:
+			switch trav := (*val.Traverser).(type) {
+			case hcl.TraverseRoot:
+				fmt.Fprintln(m.out, trav.Name)
+			case hcl.TraverseAttr:
+				fmt.Fprintln(m.out, trav.Name)
+			default:
+				continue
+			}
+		default:
+			panic("never reach here")
+		}
+	}
+
+	return subs
 }
 
 func (m *matcher) parentOf(node hclsyntax.Node) hclsyntax.Node {
