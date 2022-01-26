@@ -182,7 +182,7 @@ func parseRegexpAttr(attr string) (string, *regexp.Regexp, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("cannot parse attribute: %v", err)
 	}
-	if !strings.HasPrefix(value, "&") {
+	if !strings.HasPrefix(value, "^") {
 		value = "^" + value
 	}
 	if !strings.HasSuffix(value, "$") {

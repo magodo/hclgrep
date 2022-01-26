@@ -61,8 +61,8 @@ $ hclgrep -x 'module $_ {@*_}' -x 'source = $_' main.tf     # Grep module source
 $ hclgrep -x 'resource azurerm_network_security_rule $_ {@*_}' \
     -g 'direction = "Inbound"' \
     -g 'access = "Allow"' \
-    -g 'source_port_range = $port' \
-    -rx 'port="22"' \
+    -g 'destination_port_range = $port' \
+    -rx 'port="22|\*"' \
     main.tf 
 ```
 

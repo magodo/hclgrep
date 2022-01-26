@@ -888,6 +888,16 @@ blk {
 			want: 0,
 		},
 		{
+			args: []string{"-x", "x = $a", "-rx", `a="\*"`},
+			src:  `x = "*"`,
+			want: 1,
+		},
+		{
+			args: []string{"-x", "x = $a", "-rx", `a="\*"`},
+			src:  `x = 123`,
+			want: 0,
+		},
+		{
 			args: []string{"-x", "x = $a", "-rx", `nonexist="false"`},
 			src:  `x = true`,
 			want: 0,
