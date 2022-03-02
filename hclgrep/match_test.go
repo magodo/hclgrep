@@ -1,4 +1,4 @@
-package main
+package hclgrep
 
 import (
 	"bytes"
@@ -1017,11 +1017,11 @@ func matchTest(t *testing.T, args []string, src string, anyWant interface{}) {
 	tfatalf := func(format string, a ...interface{}) {
 		t.Fatalf("%v | %s: %s", args, src, fmt.Sprintf(format, a...))
 	}
-	m := &matcher{
-		out:  io.Discard,
+	m := &Matcher{
+		Out:  io.Discard,
 		test: true,
 	}
-	cmds, _, err := m.parseCmds(args)
+	cmds, _, err := m.ParseCmds(args)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {
@@ -1060,7 +1060,7 @@ func matchTest(t *testing.T, args []string, src string, anyWant interface{}) {
 	}
 }
 
-func matchStrs(m *matcher, cmds []cmd, src string) []hclsyntax.Node {
+func matchStrs(m *Matcher, cmds []Cmd, src string) []hclsyntax.Node {
 	srcNode, err := parse([]byte(src), "", hcl.InitialPos)
 	if err != nil {
 		panic(fmt.Sprintf("parsing source node: %v", err))
@@ -1126,12 +1126,12 @@ func fileTest(t *testing.T, args []string, src string, anyWant interface{}) {
 		t.Fatalf("%v | %s: %s", args, src, fmt.Sprintf(format, a...))
 	}
 	buf := bytes.NewBufferString("")
-	m := &matcher{
-		out:  buf,
+	m := &Matcher{
+		Out:  buf,
 		b:    []byte(src),
 		test: true,
 	}
-	cmds, _, err := m.parseCmds(args)
+	cmds, _, err := m.ParseCmds(args)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {
@@ -1145,7 +1145,7 @@ func fileTest(t *testing.T, args []string, src string, anyWant interface{}) {
 		tfatalf("unexpected error: %v", err)
 	}
 
-	if err := m.file(cmds, "", bytes.NewBufferString(src)); err != nil {
+	if err := m.File(cmds, "", bytes.NewBufferString(src)); err != nil {
 		tfatalf("m.file() error: %v", err)
 	}
 	switch want := anyWant.(type) {

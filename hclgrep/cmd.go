@@ -1,4 +1,4 @@
-package main
+package hclgrep
 
 import (
 	"flag"
@@ -22,7 +22,7 @@ const (
 	CmdNameWrite                 = "w"
 )
 
-type cmd struct {
+type Cmd struct {
 	name  CmdName
 	src   string
 	value CmdValue
@@ -55,12 +55,12 @@ func (v CmdValueString) Value() interface{} { return v }
 
 type strCmdFlag struct {
 	name CmdName
-	cmds *[]cmd
+	cmds *[]Cmd
 }
 
 func (o *strCmdFlag) String() string { return "" }
 func (o *strCmdFlag) Set(val string) error {
-	*o.cmds = append(*o.cmds, cmd{name: o.name, src: val})
+	*o.cmds = append(*o.cmds, Cmd{name: o.name, src: val})
 	return nil
 }
 
@@ -81,7 +81,7 @@ func (o *prefixFlag) Set(val string) error {
 
 func (o *prefixFlag) IsBoolFlag() bool { return true }
 
-func (m *matcher) parseCmds(args []string) ([]cmd, []string, error) {
+func (m *Matcher) ParseCmds(args []string) ([]Cmd, []string, error) {
 	eh := flag.ExitOnError
 	if m.test {
 		eh = flag.ContinueOnError
@@ -92,7 +92,7 @@ func (m *matcher) parseCmds(args []string) ([]cmd, []string, error) {
 	var prefixflag prefixFlag
 	flagSet.Var(&prefixflag, "H", "prefix filename and byte offset for a match")
 
-	var cmds []cmd
+	var cmds []Cmd
 	flagSet.Var(&strCmdFlag{
 		name: CmdNameMatch,
 		cmds: &cmds,

@@ -1,4 +1,4 @@
-package main
+package hclgrep
 
 import (
 	"fmt"
@@ -14,8 +14,9 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
-type matcher struct {
-	out     io.Writer
+type Matcher struct {
+	Out io.Writer
+
 	parents map[hclsyntax.Node]hclsyntax.Node
 	b       []byte
 
@@ -30,8 +31,8 @@ type matcher struct {
 	test bool
 }
 
-// file matches one file against one or more cmds, output the final matches to matcher's out.
-func (m *matcher) file(cmds []cmd, fileName string, in io.Reader) error {
+// File matches one File against one or more cmds, output the final matches to matcher's out.
+func (m *Matcher) File(cmds []Cmd, fileName string, in io.Reader) error {
 	m.parents = make(map[hclsyntax.Node]hclsyntax.Node)
 	var err error
 	m.b, err = io.ReadAll(in)
@@ -59,13 +60,13 @@ func (m *matcher) file(cmds []cmd, fileName string, in io.Reader) error {
 			output = fmt.Sprintf("%s:\n%s", rng, output)
 		}
 
-		fmt.Fprintf(m.out, "%s\n", output)
+		fmt.Fprintf(m.Out, "%s\n", output)
 	}
 	return nil
 }
 
 // matches matches one node against one or more cmds.
-func (m *matcher) matches(cmds []cmd, node hclsyntax.Node) []hclsyntax.Node {
+func (m *Matcher) matches(cmds []Cmd, node hclsyntax.Node) []hclsyntax.Node {
 	m.fillParents(node)
 	initial := []submatch{{node: node, values: map[string]substitution{}}}
 	final := m.submatches(cmds, initial)
@@ -104,7 +105,7 @@ func (w *parentsWalker) Exit(node hclsyntax.Node) hcl.Diagnostics {
 	return nil
 }
 
-func (m *matcher) fillParents(nodes ...hclsyntax.Node) {
+func (m *Matcher) fillParents(nodes ...hclsyntax.Node) {
 	walker := &parentsWalker{
 		parents: map[hclsyntax.Node]hclsyntax.Node{},
 		stack:   make([]hclsyntax.Node, 1, 32),
@@ -120,11 +121,11 @@ type submatch struct {
 	values map[string]substitution
 }
 
-func (m *matcher) submatches(cmds []cmd, subs []submatch) []submatch {
+func (m *Matcher) submatches(cmds []Cmd, subs []submatch) []submatch {
 	if len(cmds) == 0 {
 		return subs
 	}
-	var fn func(cmd, []submatch) []submatch
+	var fn func(Cmd, []submatch) []submatch
 	cmd := cmds[0]
 	switch cmd.name {
 	case CmdNameMatch:
@@ -145,7 +146,7 @@ func (m *matcher) submatches(cmds []cmd, subs []submatch) []submatch {
 	return m.submatches(cmds[1:], fn(cmd, subs))
 }
 
-func (m *matcher) cmdMatch(cmd cmd, subs []submatch) []submatch {
+func (m *Matcher) cmdMatch(cmd Cmd, subs []submatch) []submatch {
 	var matches []submatch
 	for _, sub := range subs {
 		hclsyntax.VisitAll(sub.node, func(node hclsyntax.Node) hcl.Diagnostics {
@@ -162,8 +163,8 @@ func (m *matcher) cmdMatch(cmd cmd, subs []submatch) []submatch {
 	return matches
 }
 
-func (m *matcher) cmdFilter(wantMatch bool) func(cmd, []submatch) []submatch {
-	return func(cmd cmd, subs []submatch) []submatch {
+func (m *Matcher) cmdFilter(wantMatch bool) func(Cmd, []submatch) []submatch {
+	return func(cmd Cmd, subs []submatch) []submatch {
 		var matches []submatch
 		var any bool
 		for _, sub := range subs {
@@ -191,7 +192,7 @@ func (m *matcher) cmdFilter(wantMatch bool) func(cmd, []submatch) []submatch {
 	}
 }
 
-func (m *matcher) cmdParent(cmd cmd, subs []submatch) []submatch {
+func (m *Matcher) cmdParent(cmd Cmd, subs []submatch) []submatch {
 	var newsubs []submatch
 	for _, sub := range subs {
 		reps := int(cmd.value.Value().(CmdValueLevel))
@@ -205,7 +206,7 @@ func (m *matcher) cmdParent(cmd cmd, subs []submatch) []submatch {
 	return newsubs
 }
 
-func (m *matcher) cmdRx(cmd cmd, subs []submatch) []submatch {
+func (m *Matcher) cmdRx(cmd Cmd, subs []submatch) []submatch {
 	var newsubs []submatch
 	for _, sub := range subs {
 		rx := cmd.value.Value().(CmdValueRx)
@@ -271,7 +272,7 @@ func (m *matcher) cmdRx(cmd cmd, subs []submatch) []submatch {
 	return newsubs
 }
 
-func (m *matcher) cmdWrite(cmd cmd, subs []submatch) []submatch {
+func (m *Matcher) cmdWrite(cmd Cmd, subs []submatch) []submatch {
 	for _, sub := range subs {
 		name := string(cmd.value.Value().(CmdValueString))
 		val, ok := sub.values[name]
@@ -280,16 +281,16 @@ func (m *matcher) cmdWrite(cmd cmd, subs []submatch) []submatch {
 		}
 		switch {
 		case val.String != nil:
-			fmt.Fprintln(m.out, *val.String)
+			fmt.Fprintln(m.Out, *val.String)
 		case val.Node != nil:
-			fmt.Fprintln(m.out, string(val.Node.Range().SliceBytes(m.b)))
+			fmt.Fprintln(m.Out, string(val.Node.Range().SliceBytes(m.b)))
 		case val.ObjectConsItem != nil:
 		case val.Traverser != nil:
 			switch trav := (*val.Traverser).(type) {
 			case hcl.TraverseRoot:
-				fmt.Fprintln(m.out, trav.Name)
+				fmt.Fprintln(m.Out, trav.Name)
 			case hcl.TraverseAttr:
-				fmt.Fprintln(m.out, trav.Name)
+				fmt.Fprintln(m.Out, trav.Name)
 			default:
 				continue
 			}
@@ -301,7 +302,7 @@ func (m *matcher) cmdWrite(cmd cmd, subs []submatch) []submatch {
 	return subs
 }
 
-func (m *matcher) parentOf(node hclsyntax.Node) hclsyntax.Node {
+func (m *Matcher) parentOf(node hclsyntax.Node) hclsyntax.Node {
 	return m.parents[node]
 }
 
@@ -336,7 +337,7 @@ func newTraverserSubstitution(trav hcl.Traverser) substitution {
 	return substitution{Traverser: &trav}
 }
 
-func (m *matcher) node(pattern, node hclsyntax.Node) bool {
+func (m *Matcher) node(pattern, node hclsyntax.Node) bool {
 	if pattern == nil || node == nil {
 		return pattern == node
 	}
@@ -449,7 +450,7 @@ func (m *matcher) node(pattern, node hclsyntax.Node) bool {
 	}
 }
 
-type matchFunc func(*matcher, interface{}, interface{}) bool
+type matchFunc func(*Matcher, interface{}, interface{}) bool
 type wildNameFunc func(interface{}) (string, bool)
 
 type iterable interface {
@@ -498,7 +499,7 @@ func (it objectConsItemIterable) len() int {
 
 // iterableMatches matches two lists. It uses a common algorithm to match
 // wildcard patterns with any number of elements without recursion.
-func (m *matcher) iterableMatches(ns1, ns2 iterable, nf wildNameFunc, mf matchFunc) bool {
+func (m *Matcher) iterableMatches(ns1, ns2 iterable, nf wildNameFunc, mf matchFunc) bool {
 	i1, i2 := 0, 0
 	next1, next2 := 0, 0
 
@@ -562,12 +563,12 @@ func wildNameFromNode(in interface{}) (string, bool) {
 	}
 }
 
-func matchNode(m *matcher, x, y interface{}) bool {
+func matchNode(m *Matcher, x, y interface{}) bool {
 	nx, ny := x.(hclsyntax.Node), y.(hclsyntax.Node)
 	return m.node(nx, ny)
 }
 
-func (m *matcher) attribute(x *hclsyntax.Attribute, y hclsyntax.Node) bool {
+func (m *Matcher) attribute(x *hclsyntax.Attribute, y hclsyntax.Node) bool {
 	if x == nil || y == nil {
 		return x == y
 	}
@@ -587,7 +588,7 @@ func (m *matcher) attribute(x *hclsyntax.Attribute, y hclsyntax.Node) bool {
 		m.potentialWildcardIdentEqual(x.Name, attrY.Name)
 }
 
-func (m *matcher) block(x, y *hclsyntax.Block) bool {
+func (m *Matcher) block(x, y *hclsyntax.Block) bool {
 	if x == nil || y == nil {
 		return x == y
 	}
@@ -596,7 +597,7 @@ func (m *matcher) block(x, y *hclsyntax.Block) bool {
 		m.body(x.Body, y.Body)
 }
 
-func (m *matcher) body(x, y *hclsyntax.Body) bool {
+func (m *Matcher) body(x, y *hclsyntax.Body) bool {
 	if x == nil || y == nil {
 		return x == y
 	}
@@ -607,13 +608,13 @@ func (m *matcher) body(x, y *hclsyntax.Body) bool {
 	return m.iterableMatches(nodeIterable(bodyEltsX), nodeIterable(bodyEltsY), wildNameFromNode, matchNode)
 }
 
-func (m *matcher) exprs(exprs1, exprs2 []hclsyntax.Expression) bool {
+func (m *Matcher) exprs(exprs1, exprs2 []hclsyntax.Expression) bool {
 	return m.iterableMatches(exprIterable(exprs1), exprIterable(exprs2), wildNameFromNode, matchNode)
 }
 
 // Operation comparisons
 
-func (m *matcher) operation(op1, op2 *hclsyntax.Operation) bool {
+func (m *Matcher) operation(op1, op2 *hclsyntax.Operation) bool {
 	if op1 == nil || op2 == nil {
 		return op1 == op2
 	}
@@ -633,12 +634,12 @@ func wildNameFromObjectConsItem(in interface{}) (string, bool) {
 	return "", false
 }
 
-func matchObjectConsItem(m *matcher, x, y interface{}) bool {
+func matchObjectConsItem(m *Matcher, x, y interface{}) bool {
 	itemX, itemY := x.(hclsyntax.ObjectConsItem), y.(hclsyntax.ObjectConsItem)
 	return m.objectConsItem(itemX, itemY)
 }
 
-func (m *matcher) objectConsItem(item1, item2 hclsyntax.ObjectConsItem) bool {
+func (m *Matcher) objectConsItem(item1, item2 hclsyntax.ObjectConsItem) bool {
 	if key1, ok := item1.KeyExpr.(*hclsyntax.ObjectConsKeyExpr); ok {
 		name, ok := variableExpr(key1.Wrapped)
 		if ok && isWildAttr(name, item1.ValueExpr) {
@@ -648,7 +649,7 @@ func (m *matcher) objectConsItem(item1, item2 hclsyntax.ObjectConsItem) bool {
 	return m.node(item1.KeyExpr, item2.KeyExpr) && m.node(item1.ValueExpr, item2.ValueExpr)
 }
 
-func (m *matcher) objectConsItems(items1, items2 []hclsyntax.ObjectConsItem) bool {
+func (m *Matcher) objectConsItems(items1, items2 []hclsyntax.ObjectConsItem) bool {
 	return m.iterableMatches(objectConsItemIterable(items1), objectConsItemIterable(items2), wildNameFromObjectConsItem, matchObjectConsItem)
 }
 
@@ -658,12 +659,12 @@ func wildNameFromString(in interface{}) (string, bool) {
 	return fromWildName(in.(string))
 }
 
-func matchString(m *matcher, x, y interface{}) bool {
+func matchString(m *Matcher, x, y interface{}) bool {
 	sx, sy := x.(string), y.(string)
 	return m.potentialWildcardIdentEqual(sx, sy)
 }
 
-func (m *matcher) potentialWildcardIdentEqual(identX, identY string) bool {
+func (m *Matcher) potentialWildcardIdentEqual(identX, identY string) bool {
 	if !isWildName(identX) {
 		return identX == identY
 	}
@@ -671,13 +672,13 @@ func (m *matcher) potentialWildcardIdentEqual(identX, identY string) bool {
 	return m.wildcardMatchString(name, identY)
 }
 
-func (m *matcher) potentialWildcardIdentsEqual(identX, identY []string) bool {
+func (m *Matcher) potentialWildcardIdentsEqual(identX, identY []string) bool {
 	return m.iterableMatches(stringIterable(identX), stringIterable(identY), wildNameFromString, matchString)
 }
 
 // Traversal comparisons
 
-func (m *matcher) traversal(traversal1, traversal2 hcl.Traversal) bool {
+func (m *Matcher) traversal(traversal1, traversal2 hcl.Traversal) bool {
 	if len(traversal1) != len(traversal2) {
 		return false
 	}
@@ -689,7 +690,7 @@ func (m *matcher) traversal(traversal1, traversal2 hcl.Traversal) bool {
 	return true
 }
 
-func (m *matcher) traverser(t1, t2 hcl.Traverser) bool {
+func (m *Matcher) traverser(t1, t2 hcl.Traverser) bool {
 	switch t1 := t1.(type) {
 	case hcl.TraverseRoot:
 		t2, ok := t2.(hcl.TraverseRoot)
@@ -710,7 +711,7 @@ func (m *matcher) traverser(t1, t2 hcl.Traverser) bool {
 
 // Wildcard matchers
 
-func (m *matcher) wildcardMatchNode(name string, node hclsyntax.Node) bool {
+func (m *Matcher) wildcardMatchNode(name string, node hclsyntax.Node) bool {
 	// Wildcard never matches multiple attributes/blocks.
 	// On one hand, it is because we have any wildcard, which already meets this requirement.
 	// One the other hand, Go panics to use the attributes/blocks slice as map key.
@@ -742,7 +743,7 @@ func (m *matcher) wildcardMatchNode(name string, node hclsyntax.Node) bool {
 	}
 }
 
-func (m *matcher) wildcardMatchString(name, target string) bool {
+func (m *Matcher) wildcardMatchString(name, target string) bool {
 	if name == "_" {
 		// values are discarded, matches anything
 		return true
@@ -775,7 +776,7 @@ func (m *matcher) wildcardMatchString(name, target string) bool {
 	}
 }
 
-func (m *matcher) wildcardMatchObjectConsItem(name string, item hclsyntax.ObjectConsItem) bool {
+func (m *Matcher) wildcardMatchObjectConsItem(name string, item hclsyntax.ObjectConsItem) bool {
 	if name == "_" {
 		// values are discarded, matches anything
 		return true
@@ -799,7 +800,7 @@ func (m *matcher) wildcardMatchObjectConsItem(name string, item hclsyntax.Object
 	}
 }
 
-func (m *matcher) wildcardMatchTraverse(name string, trav hcl.Traverser) bool {
+func (m *Matcher) wildcardMatchTraverse(name string, trav hcl.Traverser) bool {
 	if name == "_" {
 		// values are discarded, matches anything
 		return true

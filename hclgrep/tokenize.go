@@ -1,10 +1,9 @@
-package main
+package hclgrep
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
-
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
