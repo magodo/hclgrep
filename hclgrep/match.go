@@ -15,7 +15,7 @@ import (
 )
 
 type Matcher struct {
-	Out io.Writer
+	out io.Writer
 
 	cmds []Cmd
 
@@ -35,8 +35,8 @@ func NewMatcher(opts ...Option) Matcher {
 	for _, opt := range opts {
 		opt(&m)
 	}
-	if m.Out == nil {
-		m.Out = os.Stdout
+	if m.out == nil {
+		m.out = os.Stdout
 	}
 	return m
 }
@@ -92,7 +92,7 @@ func (m *Matcher) File(fileName string, in io.Reader) error {
 			output = fmt.Sprintf("%s:\n%s", rng, output)
 		}
 
-		fmt.Fprintf(m.Out, "%s\n", output)
+		fmt.Fprintf(m.out, "%s\n", output)
 	}
 	return nil
 }
@@ -313,16 +313,16 @@ func (m *Matcher) cmdWrite(cmd Cmd, subs []submatch) []submatch {
 		}
 		switch {
 		case val.String != nil:
-			fmt.Fprintln(m.Out, *val.String)
+			fmt.Fprintln(m.out, *val.String)
 		case val.Node != nil:
-			fmt.Fprintln(m.Out, string(val.Node.Range().SliceBytes(m.b)))
+			fmt.Fprintln(m.out, string(val.Node.Range().SliceBytes(m.b)))
 		case val.ObjectConsItem != nil:
 		case val.Traverser != nil:
 			switch trav := (*val.Traverser).(type) {
 			case hcl.TraverseRoot:
-				fmt.Fprintln(m.Out, trav.Name)
+				fmt.Fprintln(m.out, trav.Name)
 			case hcl.TraverseAttr:
-				fmt.Fprintln(m.Out, trav.Name)
+				fmt.Fprintln(m.out, trav.Name)
 			default:
 				continue
 			}

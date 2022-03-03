@@ -64,13 +64,8 @@ func (o *strCmdFlag) Set(val string) error {
 	return nil
 }
 
-type prefixFlag struct {
-	val bool
-	set bool
-}
-
-func ParseArgs(args []string, eh flag.ErrorHandling) ([]Option, []string, error) {
-	flagSet := flag.NewFlagSet("hclgrep", eh)
+func ParseArgs(args []string) ([]Option, []string, error) {
+	flagSet := flag.NewFlagSet("hclgrep", flag.ContinueOnError)
 	flagSet.Usage = usage
 
 	var prefix bool

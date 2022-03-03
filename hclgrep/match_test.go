@@ -2,7 +2,6 @@ package hclgrep
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"io"
 	"testing"
@@ -1018,7 +1017,7 @@ func matchTest(t *testing.T, args []string, src string, anyWant interface{}) {
 	tfatalf := func(format string, a ...interface{}) {
 		t.Fatalf("%v | %s: %s", args, src, fmt.Sprintf(format, a...))
 	}
-	opts, _, err := ParseArgs(args, flag.ContinueOnError)
+	opts, _, err := ParseArgs(args)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {
@@ -1103,7 +1102,7 @@ func fileTest(t *testing.T, args []string, src string, anyWant interface{}) {
 	tfatalf := func(format string, a ...interface{}) {
 		t.Fatalf("%v | %s: %s", args, src, fmt.Sprintf(format, a...))
 	}
-	opts, _, err := ParseArgs(args, flag.ContinueOnError)
+	opts, _, err := ParseArgs(args)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {

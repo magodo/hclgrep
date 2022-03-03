@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/magodo/hclgrep/hclgrep"
@@ -8,8 +9,11 @@ import (
 )
 
 func main() {
-	opts, files, err := hclgrep.ParseArgs(os.Args[1:], flag.ExitOnError)
+	opts, files, err := hclgrep.ParseArgs(os.Args[1:])
 	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			os.Exit(0)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

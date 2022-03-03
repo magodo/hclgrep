@@ -18,6 +18,6 @@ func OptionPrefixPosition(include bool) Option {
 
 func OptionOutput(o io.Writer) Option {
 	return func(m *Matcher) {
-		m.Out = o
+		m.out = o
 	}
 }
