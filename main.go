@@ -11,13 +11,31 @@ func main() {
 		Out: os.Stdout,
 	}
 
-	if err := m.FromArgs(os.Args[1:]); err != nil {
+	cmds, files, err := m.ParseCmds(os.Args[1:])
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	if err := m.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	if len(files) == 0 {
+		if err := m.File(cmds, "stdin", os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	for _, file := range files {
+		in, err := os.Open(file)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		err = m.File(cmds, file, in)
+		in.Close()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	}
 }

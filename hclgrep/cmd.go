@@ -81,7 +81,7 @@ func (o *prefixFlag) Set(val string) error {
 
 func (o *prefixFlag) IsBoolFlag() bool { return true }
 
-func (m *Matcher) FromArgs(args []string) error {
+func (m *Matcher) ParseCmds(args []string) ([]Cmd, []string, error) {
 	eh := flag.ExitOnError
 	if m.test {
 		eh = flag.ContinueOnError
@@ -119,52 +119,51 @@ func (m *Matcher) FromArgs(args []string) error {
 	}, string(CmdNameWrite), "")
 
 	if err := flagSet.Parse(args); err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	m.filenames = flagSet.Args()
+	files := flagSet.Args()
 
 	m.prefix = prefixflag.val
 	if !prefixflag.set {
-		m.prefix = len(m.filenames) >= 2
+		m.prefix = len(files) >= 2
 	}
 
 	if len(cmds) < 1 {
-		return fmt.Errorf("need at least one command")
+		return nil, nil, fmt.Errorf("need at least one command")
 	}
 
 	for i, cmd := range cmds {
 		switch cmd.name {
 		case CmdNameWrite:
 			if i != len(cmds)-1 {
-				return fmt.Errorf("`-%s` must be the last command", cmd.name)
+				return nil, nil, fmt.Errorf("`-%s` must be the last command", cmd.name)
 			}
 			cmds[i].value = CmdValueString(cmd.src)
 		case CmdNameRx:
 			name, rx, err := parseRegexpAttr(cmd.src)
 			if err != nil {
-				return err
+				return nil, nil, err
 			}
 			cmds[i].value = CmdValueRx{name: name, rx: *rx}
 		case CmdNameParent:
 			n, err := strconv.Atoi(cmd.src)
 			if err != nil {
-				return err
+				return nil, nil, err
 			}
 			if n < 0 {
-				return fmt.Errorf("the number follows `-%s` must >=0, got %d", cmd.name, n)
+				return nil, nil, fmt.Errorf("the number follows `-%s` must >=0, got %d", cmd.name, n)
 			}
 			cmds[i].value = CmdValueLevel(n)
 		default:
 			node, err := compileExpr(cmd.src)
 			if err != nil {
-				return err
+				return nil, nil, err
 			}
 			cmds[i].value = CmdValueNode{node}
 		}
 	}
-	m.cmds = cmds
-	return nil
+	return cmds, files, nil
 }
 
 func parseAttr(attr string) (string, string, error) {

@@ -17,9 +17,6 @@ import (
 type Matcher struct {
 	Out io.Writer
 
-	cmds      []Cmd
-	filenames []string
-
 	parents map[hclsyntax.Node]hclsyntax.Node
 	b       []byte
 
@@ -34,27 +31,8 @@ type Matcher struct {
 	test bool
 }
 
-func (m *Matcher) Run() error {
-	if len(m.filenames) == 0 {
-		return m.file("stdin", os.Stdin)
-	}
-
-	for _, file := range m.filenames {
-		in, err := os.Open(file)
-		if err != nil {
-			return fmt.Errorf("openning %s: %w", file, err)
-		}
-		err = m.file(file, in)
-		in.Close()
-		if err != nil {
-			return fmt.Errorf("processing %s: %w", file, err)
-		}
-	}
-	return nil
-}
-
-// file matches one file against one or more cmds, output the final matches to matcher's out.
-func (m *Matcher) file(fileName string, in io.Reader) error {
+// File matches one File against one or more cmds, output the final matches to matcher's out.
+func (m *Matcher) File(cmds []Cmd, fileName string, in io.Reader) error {
 	m.parents = make(map[hclsyntax.Node]hclsyntax.Node)
 	var err error
 	m.b, err = io.ReadAll(in)
@@ -65,10 +43,10 @@ func (m *Matcher) file(fileName string, in io.Reader) error {
 	if diags.HasErrors() {
 		return fmt.Errorf("cannot parse source: %s", diags.Error())
 	}
-	matches := m.matches(f.Body.(*hclsyntax.Body))
+	matches := m.matches(cmds, f.Body.(*hclsyntax.Body))
 	wd, _ := os.Getwd()
 
-	if m.cmds[len(m.cmds)-1].name == CmdNameWrite {
+	if cmds[len(cmds)-1].name == CmdNameWrite {
 		return nil
 	}
 
@@ -88,10 +66,10 @@ func (m *Matcher) file(fileName string, in io.Reader) error {
 }
 
 // matches matches one node against one or more cmds.
-func (m *Matcher) matches(node hclsyntax.Node) []hclsyntax.Node {
+func (m *Matcher) matches(cmds []Cmd, node hclsyntax.Node) []hclsyntax.Node {
 	m.fillParents(node)
 	initial := []submatch{{node: node, values: map[string]substitution{}}}
-	final := m.submatches(m.cmds, initial)
+	final := m.submatches(cmds, initial)
 	matches := make([]hclsyntax.Node, len(final))
 	for i := range matches {
 		matches[i] = final[i].node

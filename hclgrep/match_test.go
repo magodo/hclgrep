@@ -1021,7 +1021,7 @@ func matchTest(t *testing.T, args []string, src string, anyWant interface{}) {
 		Out:  io.Discard,
 		test: true,
 	}
-	err := m.FromArgs(args)
+	cmds, _, err := m.ParseCmds(args)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {
@@ -1036,7 +1036,7 @@ func matchTest(t *testing.T, args []string, src string, anyWant interface{}) {
 		tfatalf("unexpected error: %v", err)
 	}
 
-	matches := matchStrs(m, src)
+	matches := matchStrs(m, cmds, src)
 	switch want := anyWant.(type) {
 	case int:
 		if len(matches) != want {
@@ -1060,12 +1060,12 @@ func matchTest(t *testing.T, args []string, src string, anyWant interface{}) {
 	}
 }
 
-func matchStrs(m *Matcher, src string) []hclsyntax.Node {
+func matchStrs(m *Matcher, cmds []Cmd, src string) []hclsyntax.Node {
 	srcNode, err := parse([]byte(src), "", hcl.InitialPos)
 	if err != nil {
 		panic(fmt.Sprintf("parsing source node: %v", err))
 	}
-	return m.matches(srcNode)
+	return m.matches(cmds, srcNode)
 }
 
 func TestFile(t *testing.T) {
@@ -1131,7 +1131,7 @@ func fileTest(t *testing.T, args []string, src string, anyWant interface{}) {
 		b:    []byte(src),
 		test: true,
 	}
-	err := m.FromArgs(args)
+	cmds, _, err := m.ParseCmds(args)
 	switch want := anyWant.(type) {
 	case wantErr:
 		if err == nil {
@@ -1145,7 +1145,7 @@ func fileTest(t *testing.T, args []string, src string, anyWant interface{}) {
 		tfatalf("unexpected error: %v", err)
 	}
 
-	if err := m.file("", bytes.NewBufferString(src)); err != nil {
+	if err := m.File(cmds, "", bytes.NewBufferString(src)); err != nil {
 		tfatalf("m.file() error: %v", err)
 	}
 	switch want := anyWant.(type) {
