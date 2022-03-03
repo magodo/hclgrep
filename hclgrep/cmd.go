@@ -69,28 +69,12 @@ type prefixFlag struct {
 	set bool
 }
 
-func (o *prefixFlag) String() string { return "" }
-func (o *prefixFlag) Set(val string) error {
-	if val != "false" && val != "true" {
-		return fmt.Errorf("flag can only be boolean")
-	}
-	o.val = val == "true"
-	o.set = true
-	return nil
-}
-
-func (o *prefixFlag) IsBoolFlag() bool { return true }
-
-func (m *Matcher) ParseCmds(args []string) ([]Cmd, []string, error) {
-	eh := flag.ExitOnError
-	if m.test {
-		eh = flag.ContinueOnError
-	}
+func ParseArgs(args []string, eh flag.ErrorHandling) ([]Option, []string, error) {
 	flagSet := flag.NewFlagSet("hclgrep", eh)
 	flagSet.Usage = usage
 
-	var prefixflag prefixFlag
-	flagSet.Var(&prefixflag, "H", "prefix filename and byte offset for a match")
+	var prefix bool
+	flagSet.BoolVar(&prefix, "H", false, "prefix filename and byte offset for a match")
 
 	var cmds []Cmd
 	flagSet.Var(&strCmdFlag{
@@ -120,13 +104,6 @@ func (m *Matcher) ParseCmds(args []string) ([]Cmd, []string, error) {
 
 	if err := flagSet.Parse(args); err != nil {
 		return nil, nil, err
-	}
-
-	files := flagSet.Args()
-
-	m.prefix = prefixflag.val
-	if !prefixflag.set {
-		m.prefix = len(files) >= 2
 	}
 
 	if len(cmds) < 1 {
@@ -163,7 +140,12 @@ func (m *Matcher) ParseCmds(args []string) ([]Cmd, []string, error) {
 			cmds[i].value = CmdValueNode{node}
 		}
 	}
-	return cmds, files, nil
+
+	opts := []Option{OptionPrefixPosition(prefix)}
+	for _, cmd := range cmds {
+		opts = append(opts, OptionCmd(cmd))
+	}
+	return opts, flagSet.Args(), nil
 }
 
 func parseAttr(attr string) (string, string, error) {

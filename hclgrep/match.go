@@ -17,6 +17,8 @@ import (
 type Matcher struct {
 	Out io.Writer
 
+	cmds []Cmd
+
 	parents map[hclsyntax.Node]hclsyntax.Node
 	b       []byte
 
@@ -26,13 +28,43 @@ type Matcher struct {
 	// node values recorded by name, excluding "_" (used only by the
 	// actual matching phase)
 	values map[string]substitution
-
-	// only set for unit test
-	test bool
 }
 
-// File matches one File against one or more cmds, output the final matches to matcher's out.
-func (m *Matcher) File(cmds []Cmd, fileName string, in io.Reader) error {
+func NewMatcher(opts ...Option) Matcher {
+	m := Matcher{}
+	for _, opt := range opts {
+		opt(&m)
+	}
+	if m.Out == nil {
+		m.Out = os.Stdout
+	}
+	return m
+}
+
+// Files matches multiple Files, output the final matches to matcher's out. In case the length of the files is 0, it matches the content from the stdin.
+func (m *Matcher) Files(files []string) error {
+	if len(files) == 0 {
+		if err := m.File("stdin", os.Stdin); err != nil {
+			return err
+		}
+	}
+
+	for _, file := range files {
+		in, err := os.Open(file)
+		if err != nil {
+			return fmt.Errorf("openning %s: %w", file, err)
+		}
+		err = m.File(file, in)
+		in.Close()
+		if err != nil {
+			return fmt.Errorf("processing %s: %w", file, err)
+		}
+	}
+	return nil
+}
+
+// File matches one File, output the final matches to matcher's out.
+func (m *Matcher) File(fileName string, in io.Reader) error {
 	m.parents = make(map[hclsyntax.Node]hclsyntax.Node)
 	var err error
 	m.b, err = io.ReadAll(in)
@@ -43,10 +75,10 @@ func (m *Matcher) File(cmds []Cmd, fileName string, in io.Reader) error {
 	if diags.HasErrors() {
 		return fmt.Errorf("cannot parse source: %s", diags.Error())
 	}
-	matches := m.matches(cmds, f.Body.(*hclsyntax.Body))
+	matches := m.matches(f.Body.(*hclsyntax.Body))
 	wd, _ := os.Getwd()
 
-	if cmds[len(cmds)-1].name == CmdNameWrite {
+	if m.cmds[len(m.cmds)-1].name == CmdNameWrite {
 		return nil
 	}
 
@@ -65,11 +97,11 @@ func (m *Matcher) File(cmds []Cmd, fileName string, in io.Reader) error {
 	return nil
 }
 
-// matches matches one node against one or more cmds.
-func (m *Matcher) matches(cmds []Cmd, node hclsyntax.Node) []hclsyntax.Node {
+// matches matches one node.
+func (m *Matcher) matches(node hclsyntax.Node) []hclsyntax.Node {
 	m.fillParents(node)
 	initial := []submatch{{node: node, values: map[string]substitution{}}}
-	final := m.submatches(cmds, initial)
+	final := m.submatches(m.cmds, initial)
 	matches := make([]hclsyntax.Node, len(final))
 	for i := range matches {
 		matches[i] = final[i].node
