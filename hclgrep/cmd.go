@@ -20,6 +20,7 @@ const (
 	CmdNameRx                    = "rx"
 	CmdNameParent                = "p"
 	CmdNameWrite                 = "w"
+	CmdNameDelete                = "d"
 )
 
 type Cmd struct {
@@ -53,6 +54,10 @@ type CmdValueString string
 
 func (v CmdValueString) Value() interface{} { return v }
 
+type CmdValueBool bool
+
+func (v CmdValueBool) Value() interface{} { return v }
+
 type strCmdFlag struct {
 	name CmdName
 	cmds *[]Cmd
@@ -63,6 +68,18 @@ func (o *strCmdFlag) Set(val string) error {
 	*o.cmds = append(*o.cmds, Cmd{name: o.name, src: val})
 	return nil
 }
+
+type boolCmdFlag struct {
+	name CmdName
+	cmds *[]Cmd
+}
+
+func (o *boolCmdFlag) String() string { return "" }
+func (o *boolCmdFlag) Set(val string) error {
+	*o.cmds = append(*o.cmds, Cmd{name: o.name})
+	return nil
+}
+func (o *boolCmdFlag) IsBoolFlag() bool { return true }
 
 func ParseArgs(args []string) ([]Option, []string, error) {
 	flagSet := flag.NewFlagSet("hclgrep", flag.ContinueOnError)
@@ -96,6 +113,10 @@ func ParseArgs(args []string) ([]Option, []string, error) {
 		name: CmdNameWrite,
 		cmds: &cmds,
 	}, string(CmdNameWrite), "")
+	flagSet.Var(&boolCmdFlag{
+		name: CmdNameDelete,
+		cmds: &cmds,
+	}, string(CmdNameDelete), "")
 
 	if err := flagSet.Parse(args); err != nil {
 		return nil, nil, err
@@ -112,6 +133,11 @@ func ParseArgs(args []string) ([]Option, []string, error) {
 				return nil, nil, fmt.Errorf("`-%s` must be the last command", cmd.name)
 			}
 			cmds[i].value = CmdValueString(cmd.src)
+		case CmdNameDelete:
+			if i != len(cmds)-1 {
+				return nil, nil, fmt.Errorf("`-%s` must be the last command", cmd.name)
+			}
+			cmds[i].value = CmdValueBool(true)
 		case CmdNameRx:
 			name, rx, err := parseRegexpAttr(cmd.src)
 			if err != nil {

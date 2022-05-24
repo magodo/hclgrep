@@ -50,6 +50,7 @@ func TestMatch(t *testing.T) {
 		// tuple cons expression (wildcard)
 		{[]string{"-x", "x = $_"}, "x = [1, 2, 3]", 1},
 		{[]string{"-x", "[1, $_, 3]"}, "[1, 2, 3]", 1},
+		{[]string{"-x", "[1, $*_]"}, "[1, 2, 3]", 1},
 		{[]string{"-x", "[1, $_, 3]"}, "[1, 3]", 0},
 		{[]string{"-x", "[1, $x, $x]"}, "[1, 2, 2]", 1},
 		{[]string{"-x", "[1, $x, $x]"}, "[1, 2, 3]", 0},
@@ -1089,6 +1090,16 @@ foo = bar
 		{[]string{"-x", "foo = $a", "-w", "a", "-x", "foo = $a"}, "foo = bar", otherErr("`-w` must be the last command")},
 		// -w
 		{[]string{"-x", "foo = $a", "-w", "a"}, "foo = bar", "bar\n"},
+
+		// -d
+		{[]string{"-x", `a = 1`, "-d"}, `blk {
+	a = 1
+	nest {
+		a = 2
+	}
+}`, `nest {
+    a = 2
+}`},
 	}
 
 	for i, tc := range tests {

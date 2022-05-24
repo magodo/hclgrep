@@ -21,6 +21,7 @@ type Matcher struct {
 
 	parents map[hclsyntax.Node]hclsyntax.Node
 	b       []byte
+	root    *hclsyntax.Body
 
 	// whether prefix the matches with filenname and byte offset
 	prefix bool
@@ -75,11 +76,18 @@ func (m *Matcher) File(fileName string, in io.Reader) error {
 	if diags.HasErrors() {
 		return fmt.Errorf("cannot parse source: %s", diags.Error())
 	}
-	matches := m.matches(f.Body.(*hclsyntax.Body))
+	m.root = f.Body.(*hclsyntax.Body)
+	matches := m.matches(m.root)
 	wd, _ := os.Getwd()
 
 	if m.cmds[len(m.cmds)-1].name == CmdNameWrite {
 		return nil
+	}
+
+	if m.cmds[len(m.cmds)-1].name == CmdNameDelete {
+		// Instead of print the matches, we print the manipulated root
+		m.root
+		fmt.Fprintln(m.out, *val.String)
 	}
 
 	for _, n := range matches {
@@ -172,6 +180,8 @@ func (m *Matcher) submatches(cmds []Cmd, subs []submatch) []submatch {
 		fn = m.cmdRx
 	case CmdNameWrite:
 		fn = m.cmdWrite
+	case CmdNameDelete:
+		fn = m.cmdDelete
 	default:
 		panic(fmt.Sprintf("unknown command: %q", cmd.name))
 	}
@@ -328,6 +338,107 @@ func (m *Matcher) cmdWrite(cmd Cmd, subs []submatch) []submatch {
 			}
 		default:
 			panic("never reach here")
+		}
+	}
+
+	return subs
+}
+
+func (m *Matcher) cmdDelete(cmd Cmd, subs []submatch) []submatch {
+	for _, sub := range subs {
+		switch parent := m.parents[sub.node].(type) {
+		// Expressions
+		case *hclsyntax.TupleConsExpr:
+			l := []hclsyntax.Expression{}
+			for _, e := range parent.Exprs {
+				if e == sub.node {
+					continue
+				}
+				l = append(l, e)
+			}
+			parent.Exprs = l
+		case *hclsyntax.ObjectConsExpr:
+			// TODO
+		case *hclsyntax.TemplateExpr:
+			l := []hclsyntax.Expression{}
+			for _, e := range parent.Parts {
+				if e == sub.node {
+					continue
+				}
+				l = append(l, e)
+			}
+			parent.Parts = l
+		case *hclsyntax.FunctionCallExpr:
+			l := []hclsyntax.Expression{}
+			for _, e := range parent.Args {
+				if e == sub.node {
+					continue
+				}
+				l = append(l, e)
+			}
+			parent.Args = l
+		case *hclsyntax.ForExpr:
+			// Not supported as the generated HCL is invalid
+		case *hclsyntax.IndexExpr:
+			// Not supported as the generated HCL is invalid
+		case *hclsyntax.SplatExpr:
+			// Not supported as the generated HCL is invalid
+		case *hclsyntax.ParenthesesExpr:
+			// Not supported as the generated HCL is invalid
+		case *hclsyntax.UnaryOpExpr:
+			// Not supported as the generated HCL is invalid
+		case *hclsyntax.BinaryOpExpr:
+			// Not supported as the generated HCL is invalid
+		case *hclsyntax.ConditionalExpr:
+			// Not supported as the generated HCL is invalid
+		case *hclsyntax.RelativeTraversalExpr:
+			// Not supported as the generated HCL is invalid
+		case *hclsyntax.ObjectConsKeyExpr:
+			// TODO
+		case *hclsyntax.TemplateJoinExpr:
+			// Not supported as the generated HCL is invalid
+		case *hclsyntax.TemplateWrapExpr:
+			// Not supported as the generated HCL is invalid
+
+		// Body
+		case *hclsyntax.Body:
+			am := map[string]*hclsyntax.Attribute{}
+			for k, v := range parent.Attributes {
+				if v == sub.node {
+					continue
+				}
+				am[k] = v
+			}
+			parent.Attributes = am
+
+			blocks := hclsyntax.Blocks{}
+			for _, e := range parent.Blocks {
+				if e == sub.node {
+					continue
+				}
+				blocks = append(blocks, e)
+			}
+			parent.Blocks = blocks
+
+		// Attribute
+		case *hclsyntax.Attribute:
+			// Not supported as the generated HCL is invalid
+
+		// Block
+		case *hclsyntax.Block:
+			if parent.Body == sub.node {
+				parent.Body = &hclsyntax.Body{}
+			}
+
+		default:
+			// Including:
+			// - hclsyntax.LiteralValueExpr: sicne it has no children
+			// - hclsyntax.AnonSymbolExpr: sicne it has no children
+			// - hclsyntax.ScopeTraversalExpr: sicne it has no children
+			// - hclsyntax.ChildScope
+			// - hclsyntax.Blocks
+			// - hclsyntax.Attributes
+			panic(fmt.Sprintf("unexpected node: %T", parent))
 		}
 	}
 
